@@ -671,7 +671,7 @@ function fromRow(x){
   return {id:x.id, kind:x.kind, active:x.active_min||0, total:x.total_min||0, method:x.method||undefined, style:x.style||undefined,
     tag, tags:x.tags||[], bone:x.bone||undefined, name:x.name, source:x.source_name||"", rating:+x.rating||0, reviews:x.reviews||0,
     servings:x.servings||4, why:x.why||"", perServing:x.per_serving||{g:0,kcal:0,p:0,c:0,f:0},
-    ingredients:(x.ingredients||[]).map(i=>[i.name,i.qty,i.unit,i.section]), steps:x.steps&&x.steps.length?x.steps:undefined, meat:x.meat||undefined};
+    ingredients:(x.ingredients||[]).map(i=>[i.name,i.qty,i.unit,i.section]), steps:x.steps&&x.steps.length?x.steps:undefined, meat:x.meat||undefined, spoonId:x.spoonacular_id||null};
 }
 function mondayOf(d){ const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
 function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -756,7 +756,7 @@ function foundCard(x,i,kind){
     <div class="src time${r.active>state.activeLimit?" over":""}">~${r.active} min active · ${r.total} min total</div>
     ${hits.length?`<div class="src" style="color:var(--protein)">Contains ${hits.join(", ")} (no gluten-free swap)</div>`:swapsFor(r).length?`<div class="src">Swap: ${swapsFor(r).join("; ")}</div>`:""}
     ${macroLine(r.perServing)}
-    <div class="row"><span class="src">Serves ${r.servings}</span>${hits.length?"":`<button class="primary" data-savefound="${i}" data-kind="${kind}">Save to library</button>`}</div>
+    <div class="row"><span class="src">Serves ${r.servings}</span>${hits.length?"":RECIPES.some(l=>l.spoonId&&l.spoonId===r.spoonId)?`<span class="src">In your library</span>`:`<button class="primary" data-savefound="${i}" data-kind="${kind}">Save to library</button>`}</div>
   </div>`;
 }
 async function runSearch(kind, term){
@@ -880,7 +880,7 @@ async function saveDraft(){
   RECIPES.push(fromRow(data));
   const key={protein:"proteinType",starch:"starchType",veg:"vegType"}[d.kind];
   if(key){ const known=kindTags[d.kind](); if(!known.includes(d.tag)&&!state.custom[key].includes(d.tag)) state.custom[key].push(d.tag); }
-  state.found=null; state.draft=null; state.addStatus=`Saved "${d.name}".`;
+  state.draft=null; state.addStatus=`Saved "${d.name}".`;
   state.view=state.draftReturn==="chooser"?"chooser":"add"; render(); window.scrollTo({top:0});
 }
 
