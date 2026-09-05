@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meal planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FBFAF6; --ink:#20261F; --mute:#6B7266; --line:#DAD9CF; --panel:#F1F0E9;
+    --protein:#7A2E4A; --protein-soft:#F3E4EA;
+    --starch:#9C7A22; --starch-soft:#F6EED8;
+    --veg:#4F6A2C; --veg-soft:#E6EDDB;
+    --onepan:#2F4F5F; --onepan-soft:#DFE8EC;
+    --r:6px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Public Sans",system-ui,sans-serif}
+  h1,h2,h3{font-family:"Fraunces",Georgia,serif;font-weight:600;letter-spacing:-.01em;margin:0}
+  h1{font-size:30px;line-height:1.1}
+  h2{font-size:22px}
+  h3{font-size:17px}
+  button{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:var(--r);padding:8px 12px}
+  button:hover{border-color:var(--ink)}
+  button:focus-visible,select:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  button.quiet{border-color:transparent;background:transparent;color:var(--mute);padding:6px 8px}
+  button.quiet:hover{color:var(--ink)}
+  select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
+
+  .app{display:grid;grid-template-columns:300px 1fr;min-height:100vh}
+  .rail{border-right:1px solid var(--line);padding:24px 20px;background:var(--panel);display:flex;flex-direction:column;gap:18px}
+  .main{padding:28px 36px;max-width:920px}
+  @media (max-width:820px){.app{grid-template-columns:1fr}.rail{border-right:0;border-bottom:1px solid var(--line)}.main{padding:20px}}
+
+  .railhead{display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
+  .railhead small{color:var(--mute)}
+  .days{display:flex;flex-direction:column;gap:6px}
+  .day{display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;text-align:left;padding:10px;border-radius:var(--r);border:1px solid transparent;background:transparent}
+  .day:hover{background:#fff;border-color:var(--line)}
+  .day.active{background:#fff;border-color:var(--ink)}
+  .day .dname{font-family:"Fraunces",Georgia,serif;font-size:18px;line-height:1.1}
+  .day .dish{font-size:13px;line-height:1.35}
+  .day .dish.empty{color:var(--mute)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+  .dot.protein{background:var(--protein)}.dot.starch{background:var(--starch)}.dot.veg{background:var(--veg)}.dot.onepan{background:var(--onepan)}
+  .railfoot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+
+  /* stepper */
+  .steps{display:flex;gap:4px;margin:18px 0 22px;flex-wrap:wrap}
+  .step{padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;font-size:14px}
+  .step.done{background:#fff}
+  .step.current{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+  .step[data-k="protein"].done{border-color:var(--protein);color:var(--protein)}
+  .step[data-k="starch"].done{border-color:var(--starch);color:var(--starch)}
+  .step[data-k="veg"].done{border-color:var(--veg);color:var(--veg)}
+  .step[data-k="onepan"].done{border-color:var(--onepan);color:var(--onepan)}
+
+  .lede{color:var(--mute);margin:6px 0 0;max-width:60ch}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 24px}
+  .chip{border-radius:999px;padding:8px 14px}
+  .chip.on{color:#fff}
+  .k-protein .chip.on{background:var(--protein);border-color:var(--protein)}
+  .k-starch .chip.on{background:var(--starch);border-color:var(--starch)}
+  .k-veg .chip.on{background:var(--veg);border-color:var(--veg)}
+
+  .recipes{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:14px 16px;display:flex;flex-direction:column;gap:8px;border-top-width:4px}
+  .card.protein{border-top-color:var(--protein)}.card.starch{border-top-color:var(--starch)}.card.veg{border-top-color:var(--veg)}.card.onepan{border-top-color:var(--onepan)}
+  .card .src{font-size:13px;color:var(--mute)}
+  .card .macro{font-size:13px;display:flex;gap:10px;flex-wrap:wrap;color:var(--mute)}
+  .card .macro b{color:var(--ink);font-weight:600}
+  .card .why{font-size:13px}
+  .card .row{display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:6px}
+  .card.chosen{outline:2px solid var(--ink)}
+  .card.slow{opacity:.6}.card.slow:hover{opacity:1}
+  .time.over{color:var(--protein)}
+  .empty{border:1px dashed var(--line);border-radius:var(--r);padding:22px;color:var(--mute);max-width:56ch}
+  .nav{display:flex;gap:10px;margin-top:28px;justify-content:space-between}
+
+  table{border-collapse:collapse;width:100%;margin-top:14px;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:500;color:var(--mute);font-size:13px}
+  td.num,th.num{text-align:right}
+  tr.total td{font-weight:600;border-bottom:0;border-top:2px solid var(--ink)}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;margin-right:6px}
+  .badge.protein{background:var(--protein-soft);color:var(--protein)}.badge.starch{background:var(--starch-soft);color:var(--starch)}.badge.veg{background:var(--veg-soft);color:var(--veg)}.badge.onepan{background:var(--onepan-soft);color:var(--onepan)}
+
+  .grocery{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:20px}
+  @media (max-width:640px){.grocery{grid-template-columns:1fr}}
+  .list h3{margin-bottom:4px}
+  .list .sub{color:var(--mute);font-size:13px;margin-bottom:10px}
+  .list h4{font:500 13px/1.4 "Public Sans",sans-serif;color:var(--mute);margin:14px 0 4px}
+  .list ul{list-style:none;margin:0;padding:0}
+  .list li{padding:5px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}
+  .list li span:last-child{color:var(--mute);white-space:nowrap}
+  .controls{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:14px;color:var(--mute);font-size:14px}
+  .note{font-size:13px;color:var(--mute);margin-top:22px;max-width:64ch}
+  .hidden{display:none}
+  .cook{display:grid;gap:26px;margin-top:18px}
+  .dishblock{border-top:4px solid var(--line);padding-top:12px}
+  .dishblock.protein{border-color:var(--protein)}.dishblock.starch{border-color:var(--starch)}.dishblock.veg{border-color:var(--veg)}.dishblock.onepan{border-color:var(--onepan)}
+  .dishblock .cols{display:grid;grid-template-columns:240px 1fr;gap:24px;margin-top:10px}
+  @media (max-width:700px){.dishblock .cols{grid-template-columns:1fr}}
+  .dishblock ul{margin:0;padding:0;list-style:none}
+  .dishblock ul li{padding:4px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .dishblock ol{margin:0;padding-left:22px}
+  .dishblock ol li{padding:5px 0;max-width:62ch}
+  .dishblock ol li::marker{font-family:"Fraunces",Georgia,serif;font-weight:600}
+
+  .login{min-height:100vh;display:grid;place-items:center;padding:24px}
+  .login .box{max-width:380px;width:100%;display:flex;flex-direction:column;gap:12px}
+  .login input{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
+  .login .msg{color:var(--mute);font-size:14px;min-height:1.4em}
+  .weeknav{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:13px}
+  .weeknav button{padding:2px 8px}
+  .saved{font-size:12px;color:var(--mute);min-height:1.2em}
+  .hidden{display:none!important}
+  .form{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px 18px;margin-top:16px;max-width:760px}
+  .form label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mute)}
+  .form input,.form select,.form textarea{font:inherit;color:var(--ink);padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
+  .form .wide{grid-column:1/-1}
+  .form textarea{min-height:90px}
+  .urlrow{display:flex;gap:8px;margin-top:14px;max-width:640px}
+  .urlrow input{flex:1;font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r)}
+  .status{font-size:14px;color:var(--mute);margin-top:10px;min-height:1.4em}
+  .card .found{font-size:12px;color:var(--onepan)}
+</style>
+</head>
+<body>
+<div class="login" id="login">
+  <div class="box">
+    <h1>Meal planner</h1>
+    <p class="lede">Enter your email and you'll get a sign-in link.</p>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    <button class="primary" id="send">Send me a link</button>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+</div>
+<div class="login hidden" id="loading"><div class="box"><p class="lede" id="loadingMsg">Loading your recipes…</p></div></div>
+<div class="app hidden" id="app">
+  <aside class="rail">
+    <div class="railhead">
+      <div><h1>This week</h1><div class="weeknav"><button data-week="-1" aria-label="Previous week">‹</button><span id="weekLabel"></span><button data-week="1" aria-label="Next week">›</button></div></div>
+      <label><small>Days</small>
+        <select id="dayCount"><option>5</option><option>6</option><option>7</option></select>
+      </label>
+    </div>
+    <div class="days" id="days"></div>
+    <div class="railfoot">
+      <button id="showGrocery" class="primary">Build grocery lists</button>
+      <button id="showPlate">Plate calculator</button>
+      <button id="showAdd">Add a recipe</button>
+      <button id="clearWeek" class="quiet">Clear the week</button>
+      <div class="saved" id="saved"></div>
+      <button id="signout" class="quiet">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main" id="main"></main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ---------- Supabase ---------- */
+const SUPABASE_URL = "https://qedbpmvlkfzeazekhcpb.supabase.co";
+const SUPABASE_KEY = "sb_publishable_GJdGcSOans4a0nITHK5uEA_rHP9wDvp";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ---------- reference lists ---------- */
+const PROTEIN_TREE = {
+  "Chicken":["Chicken breast","Chicken thighs","Drumsticks","Whole chicken","Ground chicken"],
+  "Turkey":["Ground turkey","Turkey breast"],
+  "Pork":["Pork loin","Pork tenderloin","Pork chops","Pork shoulder","Ground pork"],
+  "Beef":["Ground beef","Beef chuck","Flank steak","Sirloin","Short ribs"],
+  "Lamb":["Lamb shoulder","Lamb chops","Ground lamb"],
+  "Fish":["Salmon","Cod","Halibut","Tuna","Trout"],
+  "Shellfish":["Shrimp","Scallops","Mussels"],
+};
+const ANY = "Any cut";
+// Off limits: no substitute, recipe is hidden.
+const GLUTEN = ["barley","farro","bulgur","couscous","malt","seitan","wheat berries","spelt","rye"];
+// Swappable: recipe stays, card shows the swap, grocery list uses the substitute.
+const SWAPS = {"soy sauce":"tamari","worcestershire":"gluten-free worcestershire","panko":"gluten-free panko","breadcrumbs":"gluten-free breadcrumbs","flour":"gluten-free flour blend","pasta":"gluten-free pasta","bread":"gluten-free bread","pita":"gluten-free pita","tortillas, flour":"corn tortillas"};
+function glutenHits(r){ return r.ingredients.map(i=>i[0]).filter(n=>GLUTEN.some(g=>n.includes(g))); }
+function swapName(n){ const k=Object.keys(SWAPS).find(g=>n.includes(g)); return k?SWAPS[k]:n; }
+function swapsFor(r){ return r.ingredients.map(i=>i[0]).filter(n=>Object.keys(SWAPS).some(g=>n.includes(g))).map(n=>`${n} → ${swapName(n)}`); }
+const STARCHES = ["Baby potatoes","Rice","Pinto beans","Black beans","Sweet potato","Quinoa","Lentils"];
+const VEGGIES  = ["Broccoli","Asparagus","Green beans","Brussels sprouts","Zucchini","Carrots","Spinach"];
+const STAPLES  = ["olive oil","salt","black pepper","garlic","butter","cumin","smoked paprika","chili flakes","oregano","thyme","tamari","honey","dijon mustard","lemon","chicken stock"];
+
+// perServing: g = cooked weight per serving; kcal, p, c, f in grams
+let RECIPES = [];
+// Starter recipes, loaded into your library the first time you sign in.
+const SEED = [
+ {id:1,steps:["Heat the oven to 425\u00b0F. Pat the thighs dry and season all over with salt and thyme.", "Warm the oil in an ovenproof skillet over medium-high. Lay the thighs in skin side down and leave them alone for 6\u20138 minutes, until the skin is deep golden.", "Flip, scatter the garlic and lemon slices around the pan, and move the skillet to the oven.", "Roast 20\u201325 minutes, until the thickest part reads 175\u00b0F. Rest 5 minutes before serving with the pan juices."],kind:"protein",active:10,total:45,method:"Oven",tag:"Chicken thighs",bone:"Bone-in",name:"Crispy garlic-lemon chicken thighs",source:"Serious Eats",rating:4.8,reviews:2140,servings:4,
+  why:"Skin-on, seared then finished in the oven. Reliable and forgiving.",
+  perServing:{g:170,kcal:310,p:32,c:2,f:19},
+  ingredients:[["chicken thighs, bone-in",2,"lb","meat"],["lemon",1,"","produce"],["garlic",4,"cloves","produce"],["olive oil",1,"tbsp","pantry"],["thyme",1,"tsp","pantry"],["salt",1,"tsp","pantry"]]},
+ {id:2,kind:"protein",active:15,total:40,method:"Grill or broiler",tag:"Chicken thighs",bone:"Boneless",name:"Yogurt-marinated chicken thighs",source:"NYT Cooking",rating:4.7,reviews:5300,servings:4,
+  why:"Marinate in the morning, grill or broil at night. High protein, low fuss.",
+  perServing:{g:165,kcal:280,p:34,c:4,f:14},
+  ingredients:[["chicken thighs, boneless",1.75,"lb","meat"],["greek yogurt",1,"cup","dairy"],["garlic",3,"cloves","produce"],["lemon",1,"","produce"],["cumin",1,"tsp","pantry"],["smoked paprika",1,"tsp","pantry"],["salt",1,"tsp","pantry"]]},
+ {id:3,kind:"protein",active:20,total:25,method:"Stovetop",tag:"Chicken breast",name:"Pan-seared chicken breast with pan sauce",source:"Serious Eats",rating:4.6,reviews:980,servings:4,
+  why:"Pounded even so it stays juicy. Sauce is just stock, mustard, a knob of butter.",
+  perServing:{g:160,kcal:250,p:38,c:2,f:9},
+  ingredients:[["chicken breast",1.5,"lb","meat"],["chicken stock",0.5,"cup","pantry"],["dijon mustard",1,"tbsp","pantry"],["butter",1,"tbsp","dairy"],["olive oil",1,"tbsp","pantry"],["salt",1,"tsp","pantry"]]},
+ {id:7,kind:"protein",active:30,total:35,tag:"Chicken breast",name:"Panko-crusted chicken cutlets",source:"Bon Appétit",rating:4.7,reviews:1200,servings:4,
+  why:"Thin cutlets, shallow-fried. Works the same with gluten-free panko and flour.",
+  perServing:{g:170,kcal:390,p:36,c:22,f:17},
+  ingredients:[["chicken breast",1.5,"lb","meat"],["panko",1.5,"cup","pantry"],["flour",0.5,"cup","pantry"],["egg",2,"","dairy"],["olive oil",4,"tbsp","pantry"],["salt",1,"tsp","pantry"]]},
+ {id:8,steps:["Toss the thighs with oil, paprika, garlic and salt.", "Air fry at 400\u00b0F for 16 minutes, flipping halfway, until browned and 175\u00b0F inside."],kind:"protein",active:5,total:22,method:"Air fryer",tag:"Chicken thighs",bone:"Boneless",name:"Air-fryer chicken thighs with paprika and garlic",source:"Skinnytaste",rating:4.8,reviews:2700,servings:4,
+  why:"Toss in oil and spices, 400°F for 16 minutes, flip once. Five minutes of your attention.",
+  perServing:{g:160,kcal:270,p:33,c:2,f:14},
+  ingredients:[["chicken thighs, boneless",1.75,"lb","meat"],["olive oil",1,"tbsp","pantry"],["smoked paprika",1,"tsp","pantry"],["garlic",2,"cloves","produce"],["salt",1,"tsp","pantry"]]},
+ {id:9,kind:"protein",active:15,total:20,method:"Stovetop",meat:{kind:"Ground beef",lb:1.25,default:"90/10"},tag:"Ground beef",name:"Taco-spiced ground beef",source:"Serious Eats",rating:4.7,reviews:1400,servings:4,
+  why:"Browned hard, then simmered with the spices and a splash of stock. Corn tortillas, rice, or lettuce cups.",
+  perServing:{g:140,kcal:250,p:29,c:4,f:13},
+  ingredients:[["ground beef",1.25,"lb","meat"],["yellow onion",1,"","produce"],["garlic",2,"cloves","produce"],["cumin",2,"tsp","pantry"],["smoked paprika",1,"tsp","pantry"],["oregano",0.5,"tsp","pantry"],["chicken stock",0.25,"cup","pantry"],["salt",1,"tsp","pantry"]]},
+ {id:4,kind:"protein",active:15,total:70,tag:"Pork loin",name:"Roast pork loin with mustard-herb crust",source:"Bon Appétit",rating:4.5,reviews:640,servings:6,
+  why:"Lean cut, so the crust and a 140°F pull temperature do the heavy lifting.",
+  perServing:{g:150,kcal:240,p:36,c:3,f:9},
+  ingredients:[["pork loin",2.5,"lb","meat"],["dijon mustard",2,"tbsp","pantry"],["garlic",3,"cloves","produce"],["thyme",1,"tbsp","pantry"],["olive oil",1,"tbsp","pantry"],["salt",1.5,"tsp","pantry"]]},
+ {id:5,kind:"protein",active:20,total:35,method:"Oven",meat:{kind:"Ground turkey",lb:1.25,default:"93/7"},tag:"Ground turkey",name:"Turkey meatballs, baked",source:"Skinnytaste",rating:4.7,reviews:3100,servings:4,
+  why:"Grated onion keeps them moist without breadcrumbs. Freezes well.",
+  perServing:{g:150,kcal:230,p:30,c:5,f:10},
+  ingredients:[["ground turkey",1.25,"lb","meat"],["yellow onion",1,"","produce"],["egg",1,"","dairy"],["parmesan",0.25,"cup","dairy"],["garlic",2,"cloves","produce"],["oregano",1,"tsp","pantry"],["salt",1,"tsp","pantry"]]},
+ {id:6,kind:"protein",active:8,total:15,method:"Broiler",tag:"Salmon",name:"Broiled salmon with tamari and honey",source:"NYT Cooking",rating:4.8,reviews:7800,servings:4,
+  why:"Eight minutes under the broiler. Glaze is four pantry things.",
+  perServing:{g:150,kcal:300,p:31,c:6,f:16},
+  ingredients:[["salmon fillet",1.5,"lb","seafood"],["tamari",2,"tbsp","pantry"],["honey",1,"tbsp","pantry"],["garlic",1,"cloves","produce"],["lemon",0.5,"","produce"]]},
+
+ {id:10,steps:["Cover the potatoes with cold salted water, bring to a boil, and cook until a knife slides in easily, about 15 minutes. Drain and let them steam dry for a few minutes.", "Heat the oven to 450\u00b0F. Spread the potatoes on a sheet pan and press each one flat with the bottom of a glass.", "Drizzle with the oil, season with salt and pepper, and roast 25\u201330 minutes without turning, until the edges are crisp and browned."],kind:"starch",active:10,total:45,method:"Oven",tag:"Baby potatoes",name:"Smashed baby potatoes",source:"Serious Eats",rating:4.9,reviews:4200,servings:4,
+  why:"Boil, smash, roast hot. Crisp edges, no peeling.",
+  perServing:{g:150,kcal:190,p:4,c:30,f:6},
+  ingredients:[["baby potatoes",1.5,"lb","produce"],["olive oil",2,"tbsp","pantry"],["salt",1,"tsp","pantry"],["black pepper",0.5,"tsp","pantry"]]},
+ {id:11,kind:"starch",active:10,total:20,tag:"Baby potatoes",name:"Boiled baby potatoes with herb butter",source:"Bon Appétit",rating:4.5,reviews:520,servings:4,
+  why:"Ten minutes, one pot. Good with anything saucy.",
+  perServing:{g:150,kcal:170,p:4,c:30,f:4},
+  ingredients:[["baby potatoes",1.5,"lb","produce"],["butter",1,"tbsp","dairy"],["parsley",0.25,"cup","produce"],["salt",1,"tsp","pantry"]]},
+ {id:12,kind:"starch",active:15,total:120,tag:"Pinto beans",name:"Brothy pinto beans with cumin",source:"Rancho Gordo",rating:4.8,reviews:1100,servings:6,
+  why:"From dried, in a Dutch oven. The pot liquor is half the point.",
+  perServing:{g:180,kcal:210,p:12,c:36,f:2},
+  ingredients:[["dried pinto beans",1,"lb","pantry"],["yellow onion",1,"","produce"],["garlic",3,"cloves","produce"],["cumin",1,"tsp","pantry"],["salt",1.5,"tsp","pantry"]]},
+ {id:13,kind:"starch",active:10,total:25,tag:"Rice",name:"Cilantro-lime rice",source:"Skinnytaste",rating:4.6,reviews:2600,servings:4,
+  why:"Plain rice, brightened at the end. Pairs with the yogurt chicken or the beans.",
+  perServing:{g:160,kcal:200,p:4,c:42,f:2},
+  ingredients:[["long-grain rice",1,"cup","pantry"],["lime",1,"","produce"],["cilantro",0.5,"cup","produce"],["salt",0.5,"tsp","pantry"]]},
+ {id:14,kind:"starch",active:10,total:35,tag:"Sweet potato",name:"Roasted sweet potato wedges",source:"NYT Cooking",rating:4.7,reviews:1900,servings:4,
+  why:"High oven, cut side down, don't crowd the pan.",
+  perServing:{g:150,kcal:180,p:3,c:33,f:5},
+  ingredients:[["sweet potato",2,"lb","produce"],["olive oil",1.5,"tbsp","pantry"],["smoked paprika",1,"tsp","pantry"],["salt",1,"tsp","pantry"]]},
+
+ {id:20,steps:["Heat the oven to 475\u00b0F with a sheet pan inside.", "Cut the broccoli into florets, keeping some stem. Toss with oil, salt and chili flakes.", "Spread on the hot pan in a single layer. Roast 12\u201315 minutes until the tips char and the stems are tender. Squeeze over the lemon."],kind:"veg",active:8,total:20,tag:"Broccoli",name:"Charred broccoli with chili and lemon",source:"Serious Eats",rating:4.8,reviews:1500,servings:4,
+  why:"Screaming-hot sheet pan. Florets go almost black at the tips.",
+  perServing:{g:120,kcal:80,p:4,c:8,f:4},
+  ingredients:[["broccoli",1.5,"lb","produce"],["olive oil",1,"tbsp","pantry"],["chili flakes",0.5,"tsp","pantry"],["lemon",0.5,"","produce"],["salt",0.5,"tsp","pantry"]]},
+ {id:21,kind:"veg",active:6,total:15,tag:"Asparagus",name:"Roasted asparagus with parmesan",source:"Bon Appétit",rating:4.6,reviews:900,servings:4,
+  why:"Twelve minutes. Snap the woody ends, don't trim with a knife.",
+  perServing:{g:110,kcal:70,p:4,c:5,f:4},
+  ingredients:[["asparagus",1,"lb","produce"],["olive oil",1,"tbsp","pantry"],["parmesan",2,"tbsp","dairy"],["salt",0.5,"tsp","pantry"]]},
+ {id:22,kind:"veg",active:10,total:15,tag:"Green beans",name:"Blistered green beans with garlic",source:"NYT Cooking",rating:4.7,reviews:2300,servings:4,
+  why:"Cast iron, high heat, leave them alone until they blister.",
+  perServing:{g:120,kcal:75,p:3,c:9,f:4},
+  ingredients:[["green beans",1,"lb","produce"],["garlic",3,"cloves","produce"],["olive oil",1,"tbsp","pantry"],["salt",0.5,"tsp","pantry"]]},
+ {id:23,kind:"veg",active:8,total:30,method:"Oven",tag:"Brussels sprouts",name:"Roasted brussels sprouts, cut side down",source:"Serious Eats",rating:4.9,reviews:3400,servings:4,
+  why:"Halved, oiled, face down on a hot pan. No flipping.",
+  perServing:{g:120,kcal:90,p:4,c:10,f:5},
+  ingredients:[["brussels sprouts",1.25,"lb","produce"],["olive oil",1.5,"tbsp","pantry"],["salt",0.5,"tsp","pantry"]]},
+
+ {id:24,kind:"veg",active:5,total:18,method:"Air fryer",tag:"Brussels sprouts",name:"Air-fryer brussels sprouts",source:"NYT Cooking",rating:4.7,reviews:1600,servings:4,
+  why:"Halved, oiled, 375°F for 12 minutes, shake the basket halfway.",
+  perServing:{g:120,kcal:85,p:4,c:10,f:5},
+  ingredients:[["brussels sprouts",1.25,"lb","produce"],["olive oil",1,"tbsp","pantry"],["salt",0.5,"tsp","pantry"]]},
+ {id:25,steps:["Cut the broccoli into florets and toss with oil and salt.", "Air fry at 375\u00b0F for 8\u20139 minutes, shaking the basket once, until the tips are crisp. Finish with lemon."],kind:"veg",active:5,total:14,method:"Air fryer",tag:"Broccoli",name:"Air-fryer broccoli with lemon",source:"Skinnytaste",rating:4.6,reviews:900,servings:4,
+  why:"Crisp tips, tender stems, nine minutes. Lemon at the end.",
+  perServing:{g:120,kcal:75,p:4,c:8,f:4},
+  ingredients:[["broccoli",1.25,"lb","produce"],["olive oil",1,"tbsp","pantry"],["lemon",0.5,"","produce"],["salt",0.5,"tsp","pantry"]]},
+
+ // one-pan / one-pot: tags list which protein/starch/veg they cover
+ {id:30,steps:["Heat the oven to 425\u00b0F. Halve the potatoes, toss with 1 tablespoon oil and salt, and roast on a sheet pan for 20 minutes.", "Meanwhile toss the thighs with the rest of the oil, garlic, paprika and salt. Push the potatoes to one side and add the chicken skin side up. Roast 20 minutes.", "Add the broccoli to the empty corner, tossed in a little oil. Roast 12 more minutes, until the chicken reads 175\u00b0F and the broccoli is charred at the edges. Squeeze over the lemon."],kind:"onepan",active:15,total:50,style:"Sheet pan",tags:["Chicken thighs","Baby potatoes","Broccoli"],name:"Sheet-pan chicken thighs, potatoes and broccoli",source:"NYT Cooking",rating:4.7,reviews:4100,servings:4,
+  why:"Potatoes go in first, chicken on top at 20 min, broccoli for the last 12.",
+  perServing:{g:430,kcal:560,p:38,c:36,f:28},
+  ingredients:[["chicken thighs, bone-in",2,"lb","meat"],["baby potatoes",1.5,"lb","produce"],["broccoli",1,"lb","produce"],["olive oil",3,"tbsp","pantry"],["garlic",4,"cloves","produce"],["lemon",1,"","produce"],["smoked paprika",1,"tsp","pantry"],["salt",1.5,"tsp","pantry"]]},
+ {id:31,kind:"onepan",active:12,total:40,style:"Sheet pan",tags:["Salmon","Baby potatoes","Asparagus"],name:"Sheet-pan salmon with potatoes and asparagus",source:"Bon Appétit",rating:4.6,reviews:1300,servings:4,
+  why:"Staggered: potatoes 25 min alone, then salmon and asparagus together for 12.",
+  perServing:{g:400,kcal:520,p:34,c:34,f:27},
+  ingredients:[["salmon fillet",1.5,"lb","seafood"],["baby potatoes",1.5,"lb","produce"],["asparagus",1,"lb","produce"],["olive oil",2,"tbsp","pantry"],["lemon",1,"","produce"],["dijon mustard",1,"tbsp","pantry"],["salt",1,"tsp","pantry"]]},
+ {id:32,kind:"onepan",active:25,total:200,style:"Dutch oven",tags:["Pork shoulder","Pinto beans","Carrots"],name:"Dutch-oven pork shoulder with pinto beans",source:"Serious Eats",rating:4.8,reviews:760,servings:6,
+  why:"Three hours low. Beans cook in the braising liquid, carrots go in for the last hour.",
+  perServing:{g:420,kcal:610,p:42,c:38,f:31},
+  ingredients:[["pork shoulder, boneless",3,"lb","meat"],["dried pinto beans",1,"lb","pantry"],["carrots",1,"lb","produce"],["yellow onion",1,"","produce"],["garlic",5,"cloves","produce"],["chicken stock",3,"cup","pantry"],["cumin",2,"tsp","pantry"],["oregano",1,"tsp","pantry"],["salt",2,"tsp","pantry"]]},
+ {id:33,kind:"onepan",active:25,total:220,style:"Pot roast",tags:["Beef chuck","Baby potatoes","Carrots"],name:"Classic pot roast with potatoes and carrots",source:"NYT Cooking",rating:4.7,reviews:2900,servings:6,
+  why:"Sear, then 3 hours covered at 300°F. Vegetables in for the last 45 minutes.",
+  perServing:{g:400,kcal:580,p:40,c:30,f:32},
+  ingredients:[["beef chuck roast",3,"lb","meat"],["baby potatoes",1.5,"lb","produce"],["carrots",1,"lb","produce"],["yellow onion",1,"","produce"],["chicken stock",2,"cup","pantry"],["thyme",1,"tbsp","pantry"],["olive oil",1,"tbsp","pantry"],["salt",2,"tsp","pantry"]]},
+ {id:35,kind:"onepan",active:20,total:150,style:"Dutch oven",tags:["Beef chuck","Carrots"],name:"Beef and barley stew",source:"Serious Eats",rating:4.8,reviews:2200,servings:6,
+  why:"Barley is the body of the stew, so there's no swapping it out.",
+  perServing:{g:400,kcal:520,p:36,c:40,f:22},
+  ingredients:[["beef chuck roast",2.5,"lb","meat"],["pearl barley",1,"cup","pantry"],["carrots",1,"lb","produce"],["yellow onion",1,"","produce"],["chicken stock",4,"cup","pantry"],["thyme",1,"tsp","pantry"],["salt",2,"tsp","pantry"]]},
+ {id:36,kind:"onepan",active:10,total:22,style:"Air fryer",tags:["Salmon","Asparagus"],name:"Air-fryer salmon and asparagus",source:"Skinnytaste",rating:4.7,reviews:1900,servings:4,
+  why:"Both in the basket at once, 400°F for 10 minutes. Add the potatoes separately if you want the third dish.",
+  perServing:{g:260,kcal:340,p:33,c:6,f:19},
+  ingredients:[["salmon fillet",1.5,"lb","seafood"],["asparagus",1,"lb","produce"],["olive oil",1,"tbsp","pantry"],["lemon",1,"","produce"],["garlic",2,"cloves","produce"],["salt",1,"tsp","pantry"]]},
+ {id:34,kind:"onepan",active:25,total:40,meat:{kind:"Ground turkey",lb:1.25,default:"93/7"},style:"Skillet",tags:["Ground turkey","Rice","Zucchini"],name:"Turkey, rice and zucchini skillet",source:"Skinnytaste",rating:4.5,reviews:1800,servings:4,
+  why:"Brown the turkey, toast the rice in the fat, simmer with stock, zucchini at the end.",
+  perServing:{g:380,kcal:470,p:33,c:44,f:16},
+  ingredients:[["ground turkey",1.25,"lb","meat"],["long-grain rice",1,"cup","pantry"],["zucchini",2,"","produce"],["yellow onion",1,"","produce"],["chicken stock",2,"cup","pantry"],["cumin",1,"tsp","pantry"],["olive oil",1,"tbsp","pantry"],["salt",1,"tsp","pantry"]]},
+];
+
+/* ---------- state ---------- */
+const DAYNAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const state = {
+  dayCount:5,
+  week: Array.from({length:7},()=>blankDay()),
+  activeDay:0,
+  view:"chooser",          // chooser | grocery
+  step:"protein",          // protein | starch | veg | onepan | summary
+  splitAfter:3,
+  hideStaples:true,
+  activeLimit:30,
+  per100:false,
+  plate:[],   // [{id, grams}]
+  plateLean:{},  // recipeId -> leanness chosen in the plate calculator
+  cookServings:4,
+  weekStart:null, // "YYYY-MM-DD" Monday
+  weekId:null,
+  custom:{proteinType:[],starchType:[],vegType:[]},  // things typed in via "Other"
+  typing:null,   // which row has the text box open
+};
+function blankDay(){ return {animal:null,proteinType:null,bone:null,starchType:null,vegType:null,protein:null,starch:null,veg:null,onepan:null,leanness:{}}; }
+function curLean(){ const d=state.week[state.activeDay]; d.leanness=d.leanness||{}; return d.leanness; }
+// Raw, per 100 g (USDA). kcal / protein / fat; carbs are 0 for all.
+const LEANNESS = {
+  "Ground beef":   {"70/30":[332,14.4,30],"80/20":[254,17.2,20],"85/15":[215,18.6,15],"90/10":[176,20,10],"93/7":[152,21,7],"96/4":[137,21.5,4.5]},
+  "Ground turkey": {"85/15":[205,18,15],"93/7":[150,19.5,8],"99/1 (breast)":[112,23,1.5]},
+  "Ground chicken":{"Regular (thigh mix)":[143,17,8],"Breast only":[110,23,1.5]},
+  "Ground pork":   {"Regular":[263,17,21],"Lean":[180,20,10]},
+  "Ground lamb":   {"Regular":[282,16.6,23.4]},
+};
+const byId = id => RECIPES.find(r=>r.id===id) || {name:"(deleted recipe)",kind:"protein",ingredients:[],perServing:{g:0,kcal:0,p:0,c:0,f:0},active:0,total:0,servings:4,source:"",rating:0,reviews:0,why:""};
+// Effective per-serving macros, with the chosen leanness swapped in for the recipe's ground meat.
+function ps(r,lean){
+  if(!r.meat) return r.perServing;
+  lean=lean||curLean();
+  const chosen=lean[r.id]||r.meat.default; if(chosen===r.meat.default) return r.perServing;
+  const gPer=r.meat.lb*453.6/r.servings/100;
+  const [k0,p0,f0]=LEANNESS[r.meat.kind][r.meat.default], [k1,p1,f1]=LEANNESS[r.meat.kind][chosen];
+  const m=r.perServing;
+  return {g:m.g, kcal:Math.round(m.kcal-(k0-k1)*gPer), p:Math.round(m.p-(p0-p1)*gPer), c:m.c, f:Math.round(m.f-(f0-f1)*gPer)};
+}
+function chipRow(kind,typeKey,opts,sel){
+  const all=[...opts,...state.custom[typeKey].filter(o=>!opts.includes(o))];
+  return `<div class="chips k-${kind}">${all.map(o=>`<button class="chip${o===sel?" on":""}" data-type="${typeKey}" data-val="${o}">${o}</button>`).join("")}
+    ${state.typing===typeKey
+      ? `<input type="text" data-other="${typeKey}" placeholder="Type it, press Enter" autofocus style="font:inherit;padding:7px 12px;border:1px solid var(--ink);border-radius:999px;min-width:190px">`
+      : `<button class="chip" data-typing="${typeKey}" style="border-style:dashed">Other…</button>`}</div>`;
+}
+function leanSelect(r,lean){
+  if(!r.meat) return "";
+  lean=lean||curLean();
+  const cur=lean[r.id]||r.meat.default;
+  return `<label class="src">${r.meat.kind} <select data-lean="${r.id}" style="padding:2px 6px;font-size:13px">${Object.keys(LEANNESS[r.meat.kind]).map(o=>`<option ${o===cur?"selected":""}>${o}</option>`).join("")}</select></label>`;
+}
+const byActive=(a,b)=>a.active-b.active;
+
+/* ---------- rendering ---------- */
+const $days=document.getElementById("days"), $main=document.getElementById("main");
+
+function renderRail(){
+  $days.innerHTML="";
+  for(let i=0;i<state.dayCount;i++){
+    const d=state.week[i];
+    const b=document.createElement("button");
+    b.className="day"+(state.view==="chooser"&&i===state.activeDay?" active":"");
+    b.onclick=()=>{state.activeDay=i;state.view="chooser";state.step=nextStep(d);render();};
+    let dishes="";
+    if(d.onepan){ dishes=`<div class="dish"><span class="dot onepan"></span>${byId(d.onepan).name}</div>`; }
+    else{
+      dishes+=d.protein?`<div class="dish"><span class="dot protein"></span>${byId(d.protein).name}</div>`:"";
+      dishes+=d.starch?`<div class="dish"><span class="dot starch"></span>${byId(d.starch).name}</div>`:"";
+      dishes+=d.veg?`<div class="dish"><span class="dot veg"></span>${byId(d.veg).name}</div>`:"";
+      if(!dishes) dishes=`<div class="dish empty">Nothing planned</div>`;
+    }
+    const planned=d.onepan||d.protein||d.starch||d.veg;
+    b.innerHTML=`<div class="dname">${DAYNAMES[i]}</div><div>${dishes}${planned?`<span class="dish" style="color:var(--mute);display:inline-block;margin-top:4px;text-decoration:underline" data-cookday="${i}">Cook</span>`:""}</div>`;
+    b.querySelector("[data-cookday]")?.addEventListener("click",ev=>{ev.stopPropagation();state.activeDay=i;state.view="cook";render();window.scrollTo({top:0});});
+    $days.appendChild(b);
+  }
+}
+function nextStep(d){
+  if(d.onepan) return "summary";
+  if(!d.protein) return "protein";
+  if(!d.starch) return "starch";
+  if(!d.veg) return "veg";
+  return "summary";
+}
+
+function render(){ queueSave(); renderRail(); state.view==="grocery"?renderGrocery():state.view==="plate"?renderPlate():state.view==="cook"?renderCook():state.view==="add"?renderAdd():renderChooser(); }
+
+/* ---------- plate calculator ---------- */
+function renderPlate(){
+  const weekIds=[...new Set(state.week.slice(0,state.dayCount).flatMap(d=>d.onepan?[d.onepan]:[d.protein,d.starch,d.veg]).filter(Boolean))];
+  const inPlate=new Set(state.plate.map(x=>x.id));
+  const opt=r=>`<option value="${r.id}" ${inPlate.has(r.id)?"disabled":""}>${r.name}</option>`;
+  const others=RECIPES.filter(r=>!weekIds.includes(r.id));
+  const rows=state.plate.map(x=>({r:byId(x.id),g:x.grams}));
+  const P=r=>ps(r,state.plateLean); const v=(r,g,k)=>Math.round(P(r)[k]*g/P(r).g);
+  const tot=rows.reduce((a,{r,g})=>{a.g+=g;a.kcal+=v(r,g,"kcal");a.p+=v(r,g,"p");a.c+=v(r,g,"c");a.f+=v(r,g,"f");return a;},{g:0,kcal:0,p:0,c:0,f:0});
+  $main.innerHTML=`<h2>Plate calculator</h2>
+    <p class="lede">Add a dish, type the grams you plated, read the numbers. Nothing here changes the week's plan.</p>
+    <div class="controls" style="margin-top:14px"><label>Add a dish <select id="addDish"><option value="">Choose…</option>
+      ${weekIds.length?`<optgroup label="This week">${weekIds.map(id=>opt(byId(id))).join("")}</optgroup>`:""}
+      <optgroup label="All recipes">${others.map(opt).join("")}</optgroup></select></label>
+      ${rows.length?`<button class="quiet" data-clearplate="1">Clear plate</button>`:""}</div>
+    ${rows.length?`<table><thead><tr><th>Dish</th><th class="num">Grams on plate</th><th class="num">Calories</th><th class="num">Protein</th><th class="num">Carbs</th><th class="num">Fat</th><th></th></tr></thead><tbody>
+      ${rows.map(({r,g})=>`<tr><td><span class="badge ${r.kind}">${r.kind==="onepan"?r.style:r.kind}</span>${r.name}<div class="src">${Math.round(P(r).kcal*100/P(r).g)} kcal · ${Math.round(P(r).p*100/P(r).g)} g protein per 100 g</div>${leanSelect(r,state.plateLean)}</td>
+        <td class="num"><input type="number" min="0" step="5" value="${g}" data-portion="${r.id}" style="width:80px;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:var(--r);text-align:right"> g</td>
+        <td class="num">${v(r,g,"kcal")}</td><td class="num">${v(r,g,"p")} g</td><td class="num">${v(r,g,"c")} g</td><td class="num">${v(r,g,"f")} g</td>
+        <td><button class="quiet" data-removeplate="${r.id}" aria-label="Remove">×</button></td></tr>`).join("")}
+      <tr class="total"><td>Plate</td><td class="num">${tot.g} g</td><td class="num">${tot.kcal}</td><td class="num">${tot.p} g</td><td class="num">${tot.c} g</td><td class="num">${tot.f} g</td><td></td></tr>
+      </tbody></table>
+      ${tot.kcal?`<p class="note">Protein ${Math.round(tot.p*4/tot.kcal*100)}% of calories, carbs ${Math.round(tot.c*4/tot.kcal*100)}%, fat ${Math.round(tot.f*9/tot.kcal*100)}%.</p>`:""}`
+    :`<div class="empty" style="margin-top:16px">Nothing on the plate yet. Add a dish above; this week's dinners are listed first.</div>`}
+    <div class="nav"><button data-back="1">Back to planning</button></div>`;
+}
+
+function stepper(){
+  const d=state.week[state.activeDay];
+  const items=[["protein","Protein"],["starch","Starch"],["veg","Vegetable"],["onepan","One-pan option"],["summary","Nutrition"]];
+  return `<div class="steps">${items.map(([k,label])=>{
+    const done = (k==="protein"&&d.protein)||(k==="starch"&&d.starch)||(k==="veg"&&d.veg)||(k==="onepan"&&d.onepan);
+    const cls="step"+(state.step===k?" current":done?" done":"");
+    return `<button class="${cls}" data-k="${k}" data-go="${k}">${label}</button>`;}).join("")}</div>`;
+}
+
+function macroLine(m){ return `<div class="macro"><b>${m.kcal}</b> kcal <span><b>${m.p}</b>g protein</span> <span><b>${m.c}</b>g carbs</span> <span><b>${m.f}</b>g fat</span> <span>${m.g} g/serving</span></div>`; }
+
+function recipeCard(r,chosenId,kind){
+  const chosen=r.id===chosenId;
+  return `<div class="card ${r.kind}${chosen?" chosen":""}${r.active>state.activeLimit?" slow":""}">
+    <h3>${r.name}</h3>
+    <div class="src">${r.source} · ${r.rating}★ from ${r.reviews.toLocaleString()} reviews${r.style?" · "+r.style:r.method?" · "+r.method:""}</div>
+    <div class="src time${r.active>state.activeLimit?" over":""}">${r.active} min active · ${r.total} min total</div>
+    <div class="why">${r.why}</div>
+    ${swapsFor(r).length?`<div class="src">Swap: ${swapsFor(r).join("; ")}</div>`:""}
+    ${leanSelect(r)}
+    ${macroLine(ps(r))}
+    <div class="row"><span class="src">Serves ${r.servings}</span>
+      <button class="${chosen?"":"primary"}" data-pick="${kind}" data-id="${r.id}">${chosen?"Chosen":"Choose this"}</button></div>
+  </div>`;
+}
+
+function renderChooser(){
+  const d=state.week[state.activeDay];
+  const dayLabel=DAYNAMES[state.activeDay];
+  let html=`<h2>${dayLabel} dinner</h2>${stepper()}`;
+
+  if(state.step==="protein"){
+    html+=`<h3>Start with the protein</h3><p class="lede">Pick the animal, then the cut. The cut is what the recipe search actually runs on.</p>
+      <div class="controls" style="margin:0 0 4px">Active cooking time per meal, at most <select id="limit">${[20,30,45,60].map(n=>`<option ${n===state.activeLimit?"selected":""}>${n}</option>`).join("")}</select> minutes. Slower recipes are greyed, not hidden.</div>
+      <div class="chips k-protein">${Object.keys(PROTEIN_TREE).map(o=>`<button class="chip${o===d.animal?" on":""}" data-animal="${o}">${o}</button>`).join("")}</div>`;
+    if(d.animal){
+      html+=`<div style="margin-top:-10px">${chipRow("protein","proteinType",[...PROTEIN_TREE[d.animal],ANY],d.proteinType)}</div>`;
+    }
+    if(d.proteinType){
+      let list=RECIPES.filter(r=>r.kind==="protein"&&(d.proteinType===ANY?PROTEIN_TREE[d.animal].includes(r.tag):r.tag===d.proteinType));
+      const gf=list.filter(r=>!glutenHits(r).length), blocked=list.filter(r=>glutenHits(r).length);
+      const isCustom=state.custom.proteinType.includes(d.proteinType);
+      const bones=[...new Set(gf.map(r=>r.bone).filter(Boolean))];
+      if(bones.length>1){
+        html+=`<div class="controls" style="margin:-8px 0 14px">Show: ${["Either",...bones].map(b=>`<button class="${(d.bone||"Either")===b?"primary":""}" data-bone="${b}" style="padding:4px 10px">${b}</button>`).join(" ")}</div>`;
+      }
+      const shown = (d.bone&&d.bone!=="Either" ? gf.filter(r=>r.bone===d.bone) : gf).sort(byActive);
+      html+= shown.length
+        ? `<div class="recipes">${shown.map(r=>recipeCard(r,d.protein,"protein")).join("")}</div>`
+        : `<div class="empty">Nothing saved for ${d.proteinType.toLowerCase()} yet.</div>`;
+      html+=discoveryBlock("protein", d.proteinType===ANY?d.animal:d.proteinType, shown.length);
+      if(blocked.length) html+=`<p class="note">${blocked.length} recipe${blocked.length>1?"s":""} hidden (no gluten-free substitute): ${blocked.map(r=>`${r.name} (${glutenHits(r).join(", ")})`).join("; ")}.</p>`;
+    }
+    html+=`<div class="nav"><span></span><button class="primary" data-go="starch" ${d.protein?"":"disabled"}>Next</button></div>`;
+  }
+
+  else if(state.step==="starch"||state.step==="veg"){
+    const cfg={starch:{opts:STARCHES,typeKey:"starchType",h:"Now the starch",p:"Pick the actual starch you want on the plate."},
+               veg:{opts:VEGGIES,typeKey:"vegType",h:"And a vegetable",p:"Recipes that use this vegetable as the main ingredient."}}[state.step];
+    const sel=d[cfg.typeKey];
+    html+=`<h3>${cfg.h}</h3><p class="lede">${cfg.p}</p>
+      ${chipRow(state.step,cfg.typeKey,cfg.opts,sel)}`;
+    if(sel){
+      const list=RECIPES.filter(r=>r.kind===state.step&&r.tag===sel&&!glutenHits(r).length).sort(byActive);
+      html+= list.length
+        ? `<div class="recipes">${list.map(r=>recipeCard(r,d[state.step],state.step)).join("")}</div>`
+        : `<div class="empty">Nothing saved for ${sel.toLowerCase()} yet.</div>`;
+      html+=discoveryBlock(state.step, sel, list.length);
+    }
+    const prev={starch:"protein",veg:"starch"}[state.step];
+    const next={starch:"veg",veg:"onepan"}[state.step];
+    html+=`<div class="nav"><button data-go="${prev}">Back</button><button class="primary" data-go="${next}" ${d[state.step]?"":"disabled"}>Next</button></div>`;
+  }
+
+  else if(state.step==="onepan"){
+    const protTags = d.proteinType===ANY ? PROTEIN_TREE[d.animal] : [d.proteinType];
+    const chosenTags=[...(d.proteinType?protTags:[]),d.starchType,d.vegType].filter(Boolean);
+    const nPicks=[d.proteinType,d.starchType,d.vegType].filter(Boolean).length;
+    const matches=RECIPES.filter(r=>r.kind==="onepan").map(r=>({r,hits:r.tags.filter(t=>chosenTags.includes(t)).length})).filter(x=>x.hits>=2&&!glutenHits(x.r).length).sort((a,b)=>b.hits-a.hits||a.r.active-b.r.active);
+    html+=`<h3>One-pan versions of this meal</h3><p class="lede">Sheet pans, Dutch ovens, air fryer, skillets and pot roasts that use at least two of the ingredients you picked. Choosing one replaces the three separate dishes.</p>`;
+    html+= matches.length
+      ? `<div class="recipes">${matches.map(({r,hits})=>recipeCard({...r,why:`Uses ${hits} of your ${nPicks} picks (${r.tags.join(", ").toLowerCase()}). ${r.why}`},d.onepan,"onepan")).join("")}</div>`
+      : `<div class="empty">Nothing in your library uses two of ${[d.proteinType===ANY?d.animal:d.proteinType,d.starchType,d.vegType].filter(Boolean).join(", ").toLowerCase()}.</div>`;
+    html+=discoveryBlock("onepan", [d.proteinType===ANY?d.animal:d.proteinType,d.starchType,d.vegType].filter(Boolean).join(", "), matches.length);
+    html+=`<div class="nav"><button data-go="veg">Back</button><div style="display:flex;gap:10px">${d.onepan?`<button data-pick="onepan" data-id="">Keep the three dishes instead</button>`:""}<button class="primary" data-go="summary">${d.onepan?"Next":"Skip, keep the three dishes"}</button></div></div>`;
+  }
+
+  else if(state.step==="summary"){
+    const dishes = d.onepan ? [byId(d.onepan)] : [d.protein,d.starch,d.veg].filter(Boolean).map(byId);
+    if(!dishes.length){ html+=`<div class="empty">Nothing chosen for ${dayLabel} yet.</div><div class="nav"><button data-go="protein">Start with the protein</button></div>`; }
+    else{
+      const tot=dishes.reduce((a,r)=>{const m=ps(r);a.g+=m.g;a.kcal+=m.kcal;a.p+=m.p;a.c+=m.c;a.f+=m.f;return a;},{g:0,kcal:0,p:0,c:0,f:0});
+      const active=dishes.reduce((a,r)=>a+r.active,0), longest=Math.max(...dishes.map(r=>r.total));
+      const over=active>state.activeLimit;
+      html+=`<h3>Per serving</h3><p class="lede">One recipe serving of each dish, cooked weight. For what you actually plate, use the plate calculator in the sidebar.</p>
+      <table><thead><tr><th>Dish</th><th class="num">Serving</th><th class="num">Calories</th><th class="num">Protein</th><th class="num">Carbs</th><th class="num">Fat</th></tr></thead><tbody>
+      ${dishes.map(r=>`<tr><td><span class="badge ${r.kind}">${r.kind==="onepan"?r.style:r.kind}</span>${r.name}</td><td class="num">${ps(r).g} g</td><td class="num">${ps(r).kcal}</td><td class="num">${ps(r).p} g</td><td class="num">${ps(r).c} g</td><td class="num">${ps(r).f} g</td></tr>`).join("")}
+      <tr class="total"><td>Whole plate</td><td class="num">${tot.g} g</td><td class="num">${tot.kcal}</td><td class="num">${tot.p} g</td><td class="num">${tot.c} g</td><td class="num">${tot.f} g</td></tr>
+      </tbody></table>
+      <p class="note" ${over?'style="color:var(--protein)"':""}>About ${active} minutes of active cooking${over?`, over your ${state.activeLimit}-minute limit. A one-pan version would bring it down.`:` (limit ${state.activeLimit})`}. Longest thing on the stove or in the oven: ${longest} minutes.</p>
+      <p class="note">Protein makes up ${Math.round(tot.p*4/tot.kcal*100)}% of calories, carbs ${Math.round(tot.c*4/tot.kcal*100)}%, fat ${Math.round(tot.f*9/tot.kcal*100)}%.</p>
+      <div class="nav"><button data-go="${d.onepan?"onepan":"veg"}">Back</button><div style="display:flex;gap:10px"><button data-cook="1">Cook this</button><button data-reset="1">Start ${dayLabel} over</button>${state.activeDay<state.dayCount-1?`<button class="primary" data-nextday="1">Plan ${DAYNAMES[state.activeDay+1]}</button>`:`<button class="primary" id="toGrocery">Build grocery lists</button>`}</div></div>`;
+    }
+  }
+  $main.innerHTML=html;
+}
+
+/* ---------- tonight: directions ---------- */
+function renderCook(){
+  const d=state.week[state.activeDay], dayLabel=DAYNAMES[state.activeDay];
+  const dishes = d.onepan ? [byId(d.onepan)] : [d.protein,d.starch,d.veg].filter(Boolean).map(byId);
+  const n=state.cookServings;
+  const order=[...dishes].sort((a,b)=>b.total-a.total);
+  let html=`<h2>${dayLabel}: cook</h2>
+    <div class="controls" style="margin-top:6px"><label>Making <select id="cookServings">${[2,3,4,5,6,8].map(x=>`<option ${x===n?"selected":""}>${x}</option>`).join("")}</select> servings</label><span>Ingredient amounts scale to match.</span></div>`;
+  if(!dishes.length) html+=`<div class="empty" style="margin-top:16px">Nothing planned for ${dayLabel} yet.</div>`;
+  else{
+    if(order.length>1) html+=`<p class="note" style="margin-top:14px">Start order: ${order.map(r=>`${r.name.split(" ").slice(0,3).join(" ")} (${r.total} min)`).join(", then ")}.</p>`;
+    html+=`<div class="cook">${dishes.map(r=>{
+      const k=n/r.servings;
+      const lean = r.meat ? `, ${(d.leanness||{})[r.id]||r.meat.default}` : "";
+      return `<div class="dishblock ${r.kind}"><h3>${r.name}</h3><div class="src">${r.source} · ${r.active} min active · ${r.total} min total${r.style?" · "+r.style:r.method?" · "+r.method:""}</div>
+        <div class="cols"><ul>${r.ingredients.map(([raw,q,u])=>`<li>${fmtQty(q*k,u)} ${swapName(raw)}${r.meat&&raw===r.meat.kind.toLowerCase()?lean:""}</li>`).join("")}</ul>
+        ${r.steps?`<ol>${r.steps.map(t=>`<li>${t}</li>`).join("")}</ol>`:`<div class="empty">Directions come in with the recipe when you save it from a link or paste them in. Not written for this sample.</div>`}</div></div>`;}).join("")}</div>`;
+  }
+  html+=`<div class="nav"><button data-back="1">Back to planning</button></div>`;
+  $main.innerHTML=html;
+}
+
+/* ---------- grocery ---------- */
+function aggregate(dayIdxs){
+  const map=new Map();
+  dayIdxs.forEach(i=>{
+    const d=state.week[i];
+    const dishes = d.onepan ? [byId(d.onepan)] : [d.protein,d.starch,d.veg].filter(Boolean).map(byId);
+    dishes.forEach(r=>r.ingredients.forEach(([raw,qty,unit,section])=>{
+      let name=swapName(raw);
+      if(r.meat&&raw===r.meat.kind.toLowerCase()) name=`${raw}, ${(d.leanness||{})[r.id]||r.meat.default}`;
+      if(state.hideStaples&&STAPLES.includes(name)) return;
+      const key=name+"|"+unit;
+      const cur=map.get(key)||{name,unit,section,qty:0};
+      cur.qty+=qty; map.set(key,cur);
+    }));
+  });
+  const groups={};
+  [...map.values()].sort((a,b)=>a.name.localeCompare(b.name)).forEach(x=>(groups[x.section]=groups[x.section]||[]).push(x));
+  return groups;
+}
+function fmtQty(q,unit){ const n=Math.round(q*100)/100; return unit?`${n} ${unit}`:`${n}`; }
+function listHtml(title,days){
+  const groups=aggregate(days);
+  const order=["meat","seafood","produce","dairy","pantry"];
+  const planned=days.filter(i=>{const d=state.week[i];return d.onepan||d.protein||d.starch||d.veg;});
+  let h=`<div class="list"><h3>${title}</h3><div class="sub">${days.map(i=>DAYNAMES[i]).join(", ")} · ${planned.length} of ${days.length} dinners planned</div>`;
+  if(!Object.keys(groups).length) h+=`<div class="empty">Nothing to buy yet. Plan a dinner on one of these days.</div>`;
+  order.forEach(s=>{ if(!groups[s]) return; h+=`<h4>${s[0].toUpperCase()+s.slice(1)}</h4><ul>${groups[s].map(x=>`<li><span>${x.name}</span><span>${fmtQty(x.qty,x.unit)}</span></li>`).join("")}</ul>`; });
+  return h+"</div>";
+}
+function renderGrocery(){
+  const n=state.dayCount, k=Math.min(state.splitAfter,n-1);
+  const first=[...Array(k).keys()], second=[...Array(n-k).keys()].map(i=>i+k);
+  $main.innerHTML=`<h2>Two shopping trips</h2>
+    <div class="controls"><label>First trip covers <select id="split">${[...Array(n-1).keys()].map(i=>`<option ${i+1===k?"selected":""}>${i+1}</option>`).join("")}</select> dinners</label>
+    <label><input type="checkbox" id="staples" ${state.hideStaples?"checked":""}> Skip pantry staples (oil, salt, spices, stock)</label></div>
+    <div class="grocery">${listHtml("First trip",first)}${listHtml("Second trip",second)}</div>
+    <p class="note">Quantities are summed across recipes and merged when the unit matches. The real version would round up to what you can actually buy (a 2-lb bag, not 1.75 lb).</p>
+    <div class="nav"><button data-back="1">Back to planning</button></div>`;
+}
+
+/* ---------- events ---------- */
+document.getElementById("dayCount").onchange=e=>{state.dayCount=+e.target.value; state.splitTouched=false; state.splitAfter=state.dayCount<=5?3:4;if(state.activeDay>=state.dayCount)state.activeDay=0;render();};
+document.getElementById("showGrocery").onclick=()=>{state.view="grocery";render();};
+document.getElementById("showPlate").onclick=()=>{state.view="plate";render();};
+document.getElementById("showAdd").onclick=()=>{state.view="add";state.draft=null;state.addStatus="";render();};
+document.getElementById("clearWeek").onclick=()=>{if(confirm("Clear every day this week?")){state.week=state.week.map(blankDay);state.step="protein";state.view="chooser";render();}};
+
+$main.addEventListener("click",e=>{
+  const t=e.target.closest("button,input");
+  if(!t) return;
+  const d=state.week[state.activeDay];
+  if(t.dataset.animal){ if(d.animal!==t.dataset.animal){ d.animal=t.dataset.animal; d.proteinType=null; d.bone=null; d.protein=null; d.onepan=null; } render(); }
+  else if(t.dataset.typing){ state.typing=t.dataset.typing; render(); $main.querySelector("[data-other]")?.focus(); }
+  else if(t.dataset.bone){ d.bone=t.dataset.bone; render(); }
+  else if(t.dataset.type){ const changed=d[t.dataset.type]!==t.dataset.val; d[t.dataset.type]=t.dataset.val; if(changed){ d[state.step]=null; d.onepan=null; if(state.step==="protein") d.bone=null; } render(); }
+  else if(t.dataset.pick){ const id=t.dataset.id; if(t.dataset.pick==="onepan"){ d.onepan=id||null; } else { d[t.dataset.pick]=id; d.onepan=null; } render(); }
+  else if(t.dataset.removeplate){ state.plate=state.plate.filter(x=>x.id!==t.dataset.removeplate); render(); }
+  else if(t.dataset.clearplate){ state.plate=[]; render(); }
+  else if(t.dataset.search){ runSearch(t.dataset.search, t.dataset.q); }
+  else if(t.dataset.savefound){ startDraft(state.found.results[+t.dataset.savefound], t.dataset.kind); }
+  else if(t.dataset.import){ importUrl(); }
+  else if(t.dataset.savedraft){ saveDraft(); }
+  else if(t.dataset.canceldraft){ state.draft=null; state.view=state.draftReturn||"add"; render(); }
+  else if(t.dataset.go){ state.step=t.dataset.go; render(); window.scrollTo({top:0}); }
+  else if(t.dataset.cook){ state.view="cook"; render(); window.scrollTo({top:0}); }
+  else if(t.dataset.reset){ state.week[state.activeDay]=blankDay(); state.step="protein"; render(); }
+  else if(t.dataset.nextday){ state.activeDay++; state.step=nextStep(state.week[state.activeDay]); render(); window.scrollTo({top:0}); }
+  else if(t.id==="toGrocery"){ state.view="grocery"; render(); }
+  else if(t.dataset.back){ state.view="chooser"; render(); }
+});
+$main.addEventListener("keydown",e=>{
+  const k=e.target.dataset.other; if(!k) return;
+  if(e.key==="Enter"){
+    const val=e.target.value.trim(); state.typing=null;
+    if(val){
+      const name=val[0].toUpperCase()+val.slice(1);
+      if(!state.custom[k].includes(name)) state.custom[k].push(name);
+      const d=state.week[state.activeDay];
+      if(d[k]!==name){ d[k]=name; d[state.step]=null; d.onepan=null; if(k==="proteinType") d.bone=null; }
+    }
+    render();
+  }
+  if(e.key==="Escape"){ state.typing=null; render(); }
+});
+$main.addEventListener("focusout",e=>{ if(e.target.dataset.other&&state.typing){ state.typing=null; render(); } });
+$main.addEventListener("input",e=>{
+  if(e.target.dataset.portion){
+    const row=state.plate.find(x=>x.id===e.target.dataset.portion);
+    if(row){ row.grams=Math.max(0,+e.target.value||0); renderPlate(); const el=$main.querySelector(`[data-portion="${row.id}"]`); if(el){ el.focus(); } }
+  }
+});
+$main.addEventListener("change",e=>{
+  if(e.target.dataset.lean){ (state.view==="plate"?state.plateLean:curLean())[e.target.dataset.lean]=e.target.value; render(); }
+  if(e.target.id==="addDish"&&e.target.value){ const r=byId(e.target.value); state.plate.push({id:r.id,grams:ps(r,state.plateLean).g}); renderPlate(); }
+  if(e.target.id==="cookServings"){ state.cookServings=+e.target.value; renderCook(); }
+  if(e.target.id==="limit"){ state.activeLimit=+e.target.value; render(); }
+  if(e.target.id==="split"){ state.splitTouched=true; state.splitAfter=+e.target.value; queueSave(); renderGrocery(); }
+  if(e.target.id==="staples"){ state.hideStaples=e.target.checked; queueSave(); renderGrocery(); }
+});
+
+
+
+/* ---------- storage: Supabase <-> app ---------- */
+function toRow(r){
+  const animal = r.kind==="protein" ? Object.keys(PROTEIN_TREE).find(a=>PROTEIN_TREE[a].includes(r.tag))||null : null;
+  return {name:r.name, source_name:r.source||null, rating:r.rating??null, reviews:r.reviews??null, why:r.why||null,
+    kind:r.kind, animal, cut:r.kind==="protein"?r.tag:null, starch_tag:r.kind==="starch"?r.tag:null,
+    veg_tags:r.kind==="veg"?[r.tag]:[], tags:r.tags||[], style:r.style||null, method:r.method||null, bone:r.bone||null,
+    servings:r.servings||4, per_serving:r.perServing, ingredients:r.ingredients.map(([name,qty,unit,section])=>({name,qty,unit,section})),
+    steps:r.steps||[], active_min:r.active, total_min:r.total, meat:r.meat||null};
+}
+function fromRow(x){
+  const tag = x.kind==="protein"?x.cut : x.kind==="starch"?x.starch_tag : x.kind==="veg"?(x.veg_tags||[])[0] : null;
+  return {id:x.id, kind:x.kind, active:x.active_min||0, total:x.total_min||0, method:x.method||undefined, style:x.style||undefined,
+    tag, tags:x.tags||[], bone:x.bone||undefined, name:x.name, source:x.source_name||"", rating:+x.rating||0, reviews:x.reviews||0,
+    servings:x.servings||4, why:x.why||"", perServing:x.per_serving||{g:0,kcal:0,p:0,c:0,f:0},
+    ingredients:(x.ingredients||[]).map(i=>[i.name,i.qty,i.unit,i.section]), steps:x.steps&&x.steps.length?x.steps:undefined, meat:x.meat||undefined};
+}
+function mondayOf(d){ const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
+function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function fmtWeek(s){ const d=new Date(s+"T00:00:00"); return "Week of "+d.toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
+
+async function loadRecipes(){
+  const {data,error}=await db.from("recipes").select("*").order("created_at");
+  if(error) throw error;
+  if(!data.length){
+    document.getElementById("loadingMsg").textContent="First visit: adding "+SEED.length+" starter recipes…";
+    const {data:ins,error:e2}=await db.from("recipes").insert(SEED.map(toRow)).select("*");
+    if(e2) throw e2;
+    RECIPES=ins.map(fromRow);
+  } else RECIPES=data.map(fromRow);
+}
+async function loadSettings(){
+  const {data}=await db.from("settings").select("*").maybeSingle();
+  if(data){
+    state.activeLimit=data.active_limit||30;
+    state.custom=Object.assign({proteinType:[],starchType:[],vegType:[]},data.custom_chips||{});
+    const p=data.prefs||{}; if(p.hideStaples!==undefined) state.hideStaples=p.hideStaples;
+  }
+}
+async function loadWeek(weekStart){
+  state.weekStart=weekStart;
+  const {data}=await db.from("week_plans").select("*").eq("week_start",weekStart).maybeSingle();
+  if(data){
+    state.weekId=data.id; state.dayCount=data.day_count||5;
+    state.week=Array.from({length:7},(_,i)=>Object.assign(blankDay(),(data.days||[])[i]||{}));
+    if(data.days&&data.days.length&&data.days[0]&&data.days[0]._splitAfter) state.splitAfter=data.days[0]._splitAfter;
+  } else { state.weekId=null; state.dayCount=5; state.week=Array.from({length:7},()=>blankDay()); state.splitAfter=3; }
+  state.activeDay=0; state.step=nextStep(state.week[0]); state.view="chooser";
+  document.getElementById("dayCount").value=state.dayCount;
+  document.getElementById("weekLabel").textContent=fmtWeek(weekStart);
+}
+let saveTimer=null, ready=false;
+function queueSave(){ if(!ready) return; clearTimeout(saveTimer); saveTimer=setTimeout(saveAll,600); }
+async function saveAll(){
+  const $s=document.getElementById("saved"); $s.textContent="Saving…";
+  const days=state.week.map((d,i)=>i===0?Object.assign({},d,{_splitAfter:state.splitAfter}):d);
+  const w={week_start:state.weekStart, day_count:state.dayCount, days};
+  const {data,error}=await db.from("week_plans").upsert(w,{onConflict:"user_id,week_start"}).select("id").single();
+  if(!error&&data) state.weekId=data.id;
+  const {error:e2}=await db.from("settings").upsert({active_limit:state.activeLimit, custom_chips:state.custom, prefs:{hideStaples:state.hideStaples}, updated_at:new Date().toISOString()},{onConflict:"user_id"});
+  $s.textContent=(error||e2)?"Couldn't save: "+(error||e2).message:"Saved";
+}
+document.getElementById("days").parentElement.addEventListener("click",e=>{
+  const b=e.target.closest("[data-week]"); if(!b) return;
+  const d=new Date(state.weekStart+"T00:00:00"); d.setDate(d.getDate()+7*(+b.dataset.week));
+  ready=false; loadWeek(iso(d)).then(()=>{ready=true;render();});
+});
+
+/* ---------- Spoonacular: search inside the flow, and Add Recipe ---------- */
+const SPOON = "/.netlify/functions/spoon";
+state.found = null;   // {key, results:[...raw spoonacular recipes], status}
+state.draft = null;   // recipe being confirmed before saving
+state.addStatus = "";
+const kindTags = {protein:()=>Object.values(PROTEIN_TREE).flat(), starch:()=>[...STARCHES,...state.custom.starchType], veg:()=>[...VEGGIES,...state.custom.vegType]};
+const METHODS = ["Oven","Stovetop","Broiler","Grill","Air fryer","Dutch oven","Sheet pan","Slow cooker","Skillet","Pot roast","Grill or broiler"];
+const STYLES = ["Sheet pan","Dutch oven","Air fryer","Skillet","Pot roast","Slow cooker","One pot"];
+
+const AUTO_SEARCH_BELOW = 5;   // search Spoonacular automatically when the library has fewer than this many
+const SEARCH_COUNT = 12;
+function discoveryBlock(kind, term, libCount){
+  const key=kind+"|"+term;
+  const f=state.found&&state.found.key===key?state.found:null;
+  if(!f && term && libCount<AUTO_SEARCH_BELOW && state.autoKey!==key){ state.autoKey=key; setTimeout(()=>runSearch(kind,term),0); }
+  let out=`<h3 style="margin-top:26px">From Spoonacular</h3>
+    <div class="controls" style="margin-top:4px"><button data-search="${kind}" data-q="${term}">${f?"Search again":"Search for "+term.toLowerCase()}</button>${f&&f.status?`<span>${f.status}</span>`:""}</div>`;
+  if(f&&f.results&&f.results.length){
+    out+=`<div class="recipes" style="margin-top:14px">${f.results.map((x,i)=>({x,i,a:fromSpoon(x).active})).sort((p,q)=>p.a-q.a).map(({x,i})=>foundCard(x,i,kind)).join("")}</div>`;
+  }
+  return out;
+}
+function foundCard(x,i,kind){
+  const r=fromSpoon(x); r.kind=kind;
+  const hits=glutenHits(r);
+  return `<div class="card ${kind}${r.active>state.activeLimit?" slow":""}">
+    <h3>${r.name}</h3>
+    <div class="found">Found on Spoonacular</div>
+    <div class="src">${r.source||"Web"} · ${x.aggregateLikes||0} likes · ${r.method||""}</div>
+    <div class="src time${r.active>state.activeLimit?" over":""}">~${r.active} min active · ${r.total} min total</div>
+    ${hits.length?`<div class="src" style="color:var(--protein)">Contains ${hits.join(", ")} (no gluten-free swap)</div>`:swapsFor(r).length?`<div class="src">Swap: ${swapsFor(r).join("; ")}</div>`:""}
+    ${macroLine(r.perServing)}
+    <div class="row"><span class="src">Serves ${r.servings}</span>${hits.length?"":`<button class="primary" data-savefound="${i}" data-kind="${kind}">Save to library</button>`}</div>
+  </div>`;
+}
+async function runSearch(kind, term){
+  state.found={key:kind+"|"+term, results:[], status:"Searching…"}; render();
+  const p=new URLSearchParams({op:"search", query:term, include:kind==="onepan"?term.split(", ").join(","):"", number:String(SEARCH_COUNT)});
+  if(kind==="starch"||kind==="veg") p.set("type","side dish");
+  try{
+    const res=await fetch(SPOON+"?"+p); const j=await res.json();
+    if(j.error||j.message) throw new Error(j.error||j.message);
+    state.found.results=j.results||[];
+    state.found.status=state.found.results.length?`${state.found.results.length} found · ${j.quotaLeft!=null?Math.round(j.quotaLeft)+" points left today":""}`:"Nothing found. Try a different chip or word.";
+  }catch(e){ state.found.status="Search failed: "+e.message; }
+  render();
+}
+
+// Spoonacular recipe -> our recipe shape
+function fromSpoon(x){
+  const nut=(x.nutrition&&x.nutrition.nutrients)||[];
+  const n=name=>{const f=nut.find(v=>v.name===name); return f?Math.round(f.amount):0;};
+  const g=x.nutrition&&x.nutrition.weightPerServing&&x.nutrition.weightPerServing.unit==="g"?Math.round(x.nutrition.weightPerServing.amount):0;
+  const ingredients=(x.extendedIngredients||[]).map(i=>[(i.nameClean||i.name||"").toLowerCase(), round2(i.measures&&i.measures.us?i.measures.us.amount:i.amount), (i.measures&&i.measures.us?i.measures.us.unitShort:i.unit)||"", sectionOf(i.aisle)]);
+  const steps=(x.analyzedInstructions&&x.analyzedInstructions[0]&&x.analyzedInstructions[0].steps||[]).map(s=>s.step);
+  const method=guessMethod((x.title||"")+" "+steps.join(" "));
+  const total=x.readyInMinutes||0, prep=x.preparationMinutes>0?x.preparationMinutes:null, cook=x.cookingMinutes>0?x.cookingMinutes:null;
+  let active = prep!=null ? prep : Math.min(20, Math.round(total/3)||10);
+  if(/Stovetop|Skillet/.test(method)) active = prep!=null&&cook!=null ? prep+cook : total;
+  return {name:x.title||"Untitled", source:x.sourceName||hostOf(x.sourceUrl), sourceUrl:x.sourceUrl||"", spoonId:x.id||null, rating:0, reviews:x.aggregateLikes||0,
+    servings:x.servings||4, why:"", perServing:{g, kcal:n("Calories"), p:n("Protein"), c:n("Carbohydrates"), f:n("Fat")},
+    ingredients, steps, active, total, method, kind:"protein", tag:"", tags:[]};
+}
+function round2(v){ return Math.round((+v||0)*100)/100; }
+function hostOf(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch{ return "Web"; } }
+function sectionOf(aisle){ const a=(aisle||"").toLowerCase(); if(/meat|poultry/.test(a)) return "meat"; if(/seafood|fish/.test(a)) return "seafood"; if(/produce|fruit|vegetable|herb/.test(a)) return "produce"; if(/milk|egg|cheese|dairy/.test(a)) return "dairy"; return "pantry"; }
+function guessMethod(t){ t=t.toLowerCase(); if(/air fry/.test(t)) return "Air fryer"; if(/slow cooker|crock/.test(t)) return "Slow cooker"; if(/sheet pan|baking sheet/.test(t)) return "Sheet pan"; if(/dutch oven/.test(t)) return "Dutch oven"; if(/broil/.test(t)) return "Broiler"; if(/grill/.test(t)) return "Grill"; if(/skillet|sauté|saute|stir.fry|pan.fry|simmer/.test(t)) return "Stovetop"; if(/oven|roast|bake/.test(t)) return "Oven"; return "Stovetop"; }
+function guessTags(r){
+  const names=r.ingredients.map(i=>i[0]).join(" | ")+" | "+r.name.toLowerCase();
+  const prot=Object.values(PROTEIN_TREE).flat().find(t=>names.includes(t.toLowerCase())) || Object.keys(PROTEIN_TREE).find(a=>names.includes(a.toLowerCase()));
+  const st=[...STARCHES,...state.custom.starchType].find(t=>names.includes(t.toLowerCase().replace(/s$/,"")));
+  const vg=[...VEGGIES,...state.custom.vegType].find(t=>names.includes(t.toLowerCase().replace(/s$/,"")));
+  return {prot,st,vg};
+}
+function startDraft(x, kind){
+  const r=fromSpoon(x); const g=guessTags(r);
+  if(kind){ r.kind=kind; r.tag = kind==="protein"?(g.prot||""):kind==="starch"?(g.st||""):kind==="veg"?(g.vg||""):""; if(kind==="onepan") r.tags=[g.prot,g.st,g.vg].filter(Boolean); }
+  else { const n=[g.prot,g.st,g.vg].filter(Boolean).length; if(g.prot&&n>=2){r.kind="onepan";r.tags=[g.prot,g.st,g.vg].filter(Boolean);} else if(g.prot){r.kind="protein";r.tag=g.prot;} else if(g.st){r.kind="starch";r.tag=g.st;} else if(g.vg){r.kind="veg";r.tag=g.vg;} else {r.kind="protein";r.tag="";} }
+  if(r.kind==="onepan") r.style = STYLES.find(s=>s===r.method) || "One pot";
+  state.draftReturn = state.view; state.draft=r; state.view="add"; state.addStatus=""; render(); window.scrollTo({top:0});
+}
+async function importUrl(){
+  const url=(document.getElementById("recipeUrl")||{}).value?.trim();
+  if(!url){ state.addStatus="Paste a recipe link first."; render(); return; }
+  state.addStatus="Reading the recipe…"; render();
+  try{
+    const res=await fetch(SPOON+"?"+new URLSearchParams({op:"extract", url})); const j=await res.json();
+    if(j.error||j.message||!j.title) throw new Error(j.error||j.message||"Couldn't read a recipe from that page.");
+    startDraft(j, null);
+  }catch(e){ state.addStatus="Import failed: "+e.message; render(); }
+}
+function renderAdd(){
+  const d=state.draft;
+  let html=`<h2>Add a recipe</h2>`;
+  if(!d){
+    html+=`<p class="lede">Paste a link to a recipe page. Spoonacular reads the ingredients, steps and nutrition; you confirm the details, then it's in your library.</p>
+      <div class="urlrow"><input id="recipeUrl" type="url" placeholder="https://www.seriouseats.com/…" value="${state.pendingUrl||""}"><button class="primary" data-import="1">Import</button></div>
+      <div class="status">${state.addStatus||""}</div>
+      <p class="note">Works with most recipe sites (NYT Cooking is the usual exception because it's behind a paywall). The library now has ${RECIPES.length} recipes.</p>
+      <div class="nav"><button data-back="1">Back to planning</button></div>`;
+    $main.innerHTML=html; return;
+  }
+  const opt=(list,cur)=>list.map(o=>`<option ${o===cur?"selected":""}>${o}</option>`).join("");
+  const tagList = d.kind==="onepan" ? [] : kindTags[d.kind]();
+  html+=`<p class="lede">Check what was read and fix anything that's off. The category and chip decide where this recipe shows up in the planner.</p>
+    <div class="form">
+      <label class="wide">Name<input data-f="name" value="${esc(d.name)}"></label>
+      <label>Category<select data-f="kind">${opt(["protein","starch","veg","onepan"],d.kind)}</select></label>
+      ${d.kind==="onepan"
+        ? `<label>Style<select data-f="style">${opt(STYLES,d.style)}</select></label>
+           <label class="wide">Ingredients it covers (comma separated: e.g. Chicken thighs, Baby potatoes, Broccoli)<input data-f="tags" value="${esc((d.tags||[]).join(", "))}"></label>`
+        : `<label>Chip it appears under<input data-f="tag" list="tagopts" value="${esc(d.tag||"")}" placeholder="e.g. ${tagList[0]||""}"><datalist id="tagopts">${tagList.map(t=>`<option value="${esc(t)}">`).join("")}</datalist></label>`}
+      ${d.kind==="protein"?`<label>Bone<select data-f="bone">${opt(["","Bone-in","Boneless"],d.bone||"")}</select></label>`:""}
+      <label>Method<select data-f="method">${opt(METHODS,d.method)}</select></label>
+      <label>Active minutes (hands-on)<input data-f="active" type="number" min="0" value="${d.active}"></label>
+      <label>Total minutes<input data-f="total" type="number" min="0" value="${d.total}"></label>
+      <label>Serves<input data-f="servings" type="number" min="1" value="${d.servings}"></label>
+      <label>Your rating<select data-f="rating">${opt(["0","1","2","3","4","5"],String(d.rating||0))}</select></label>
+      <label>Grams per serving<input data-f="ps.g" type="number" value="${d.perServing.g}"></label>
+      <label>Calories per serving<input data-f="ps.kcal" type="number" value="${d.perServing.kcal}"></label>
+      <label>Protein g<input data-f="ps.p" type="number" value="${d.perServing.p}"></label>
+      <label>Carbs g<input data-f="ps.c" type="number" value="${d.perServing.c}"></label>
+      <label>Fat g<input data-f="ps.f" type="number" value="${d.perServing.f}"></label>
+      <label class="wide">One-line note (shows on the card)<input data-f="why" value="${esc(d.why||"")}" placeholder="What's good about it"></label>
+      <label class="wide">Ingredients (${d.ingredients.length})<textarea readonly>${esc(d.ingredients.map(([n,q,u])=>`${q} ${u} ${n}`.trim()).join("\n"))}</textarea></label>
+      <label class="wide">Steps (${d.steps.length})<textarea readonly>${esc(d.steps.map((s,i)=>`${i+1}. ${s}`).join("\n"))}</textarea></label>
+    </div>
+    ${glutenHits(d).length?`<p class="note" style="color:var(--protein)">Contains ${glutenHits(d).join(", ")} — no gluten-free swap, so the planner will hide this one.</p>`:swapsFor(d).length?`<p class="note">Swaps the planner will apply: ${swapsFor(d).join("; ")}</p>`:""}
+    <div class="status">${state.addStatus||""}</div>
+    <div class="nav"><button data-canceldraft="1">Cancel</button><button class="primary" data-savedraft="1">Save to library</button></div>`;
+  $main.innerHTML=html;
+}
+function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+$main.addEventListener("input",e=>{
+  const f=e.target.dataset.f; if(!f||!state.draft) return;
+  const d=state.draft, v=e.target.value;
+  if(f.startsWith("ps.")) d.perServing[f.slice(3)]=+v||0;
+  else if(f==="tags") d.tags=v.split(",").map(s=>s.trim()).filter(Boolean);
+  else if(["active","total","servings","rating"].includes(f)) d[f]=+v||0;
+  else d[f]=v;
+  if(f==="kind"||f==="method"){ if(f==="kind"&&v==="onepan"&&!d.style) d.style=STYLES.find(s=>s===d.method)||"One pot"; renderAdd(); }
+});
+$main.addEventListener("change",e=>{ const f=e.target.dataset.f; if(f&&state.draft&&(f==="kind"||f==="method"||f==="bone"||f==="style"||f==="rating")){ state.draft[f]= f==="rating"?+e.target.value:e.target.value; if(f==="kind"){ if(e.target.value==="onepan"&&!state.draft.style) state.draft.style=STYLES.find(s=>s===state.draft.method)||"One pot"; renderAdd(); } } });
+async function saveDraft(){
+  const d=state.draft;
+  if(!d.name.trim()){ state.addStatus="Give it a name."; renderAdd(); return; }
+  if(d.kind!=="onepan"&&!d.tag.trim()){ state.addStatus="Choose the chip it should appear under."; renderAdd(); return; }
+  if(d.kind==="onepan"&&d.tags.length<2){ state.addStatus="A one-pan recipe needs at least two ingredients it covers."; renderAdd(); return; }
+  if(d.kind!=="onepan") d.tag=d.tag.trim().replace(/^./,c=>c.toUpperCase());
+  state.addStatus="Saving…"; renderAdd();
+  const row=toRow(d); row.source_url=d.sourceUrl||null; row.spoonacular_id=d.spoonId||null;
+  const {data,error}=await db.from("recipes").insert(row).select("*").single();
+  if(error){ state.addStatus="Couldn't save: "+error.message; renderAdd(); return; }
+  RECIPES.push(fromRow(data));
+  const key={protein:"proteinType",starch:"starchType",veg:"vegType"}[d.kind];
+  if(key){ const known=kindTags[d.kind](); if(!known.includes(d.tag)&&!state.custom[key].includes(d.tag)) state.custom[key].push(d.tag); }
+  state.found=null; state.draft=null; state.addStatus=`Saved "${d.name}".`;
+  state.view=state.draftReturn==="chooser"?"chooser":"add"; render(); window.scrollTo({top:0});
+}
+
+/* ---------- auth ---------- */
+const $ = id=>document.getElementById(id);
+$("send").onclick=async()=>{
+  const email=$("email").value.trim(); if(!email){$("loginMsg").textContent="Type your email first.";return;}
+  $("loginMsg").textContent="Sending…";
+  const {error}=await db.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin}});
+  $("loginMsg").textContent=error?"Couldn't send: "+error.message:"Check your email and click the link.";
+};
+$("email").addEventListener("keydown",e=>{ if(e.key==="Enter") $("send").click(); });
+$("signout").onclick=()=>db.auth.signOut();
+
+let booted=false;
+async function boot(session){
+  if(!session){ booted=false; ready=false; $("login").classList.remove("hidden"); $("app").classList.add("hidden"); $("loading").classList.add("hidden"); return; }
+  if(booted) return; booted=true;
+  $("login").classList.add("hidden"); $("loading").classList.remove("hidden");
+  try{
+    await loadRecipes(); await loadSettings(); await loadWeek(iso(mondayOf(new Date())));
+    ready=true;
+    $("loading").classList.add("hidden"); $("app").classList.remove("hidden");
+    render();
+  }catch(err){ $("loadingMsg").textContent="Something went wrong loading: "+err.message; }
+}
+db.auth.onAuthStateChange((_e,session)=>boot(session));
+db.auth.getSession().then(({data})=>boot(data.session));
+</script>
+</body>
+</html>
