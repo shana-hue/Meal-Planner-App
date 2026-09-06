@@ -366,6 +366,7 @@ function leanSelect(r,lean){
   return `<label class="src">${r.meat.kind} <select data-lean="${r.id}" style="padding:2px 6px;font-size:13px">${Object.keys(LEANNESS[r.meat.kind]).map(o=>`<option ${o===cur?"selected":""}>${o}</option>`).join("")}</select></label>`;
 }
 const byActive=(a,b)=>a.active-b.active;
+const byRatingThenActive=(a,b)=>(b.rating-a.rating)||(a.active-b.active);
 
 /* ---------- rendering ---------- */
 const $days=document.getElementById("days"), $main=document.getElementById("main");
@@ -460,25 +461,27 @@ function renderChooser(){
   let html=`<h2>${dayLabel} dinner</h2>${stepper()}`;
 
   if(state.step==="protein"){
-    html+=`<h3>Start with the protein</h3><p class="lede">Pick the animal, then the cut. The cut is what the recipe search actually runs on.</p>
+    html+=`<h3>Start with the protein</h3><p class="lede">Pick the animal, then the cut. "Any cut" shows everything you've saved for that animal.</p>
       <div class="controls" style="margin:0 0 4px">Active cooking time per meal, at most <select id="limit">${[20,30,45,60].map(n=>`<option ${n===state.activeLimit?"selected":""}>${n}</option>`).join("")}</select> minutes. Slower recipes are greyed, not hidden.</div>
       <div class="chips k-protein">${Object.keys(PROTEIN_TREE).map(o=>`<button class="chip${o===d.animal?" on":""}" data-animal="${o}">${o}</button>`).join("")}</div>`;
     if(d.animal){
       html+=`<div style="margin-top:-10px">${chipRow("protein","proteinType",[...PROTEIN_TREE[d.animal],ANY],d.proteinType)}</div>`;
     }
-    if(d.proteinType){
-      let list=RECIPES.filter(r=>r.kind==="protein"&&(d.proteinType===ANY?PROTEIN_TREE[d.animal].includes(r.tag):r.tag===d.proteinType));
+    if(d.animal&&d.proteinType){
+      const cutSel = d.proteinType!==ANY ? d.proteinType : null;
+      const term = cutSel || d.animal;
+      let list=RECIPES.filter(r=>r.kind==="protein"&&(cutSel ? r.tag===cutSel : (PROTEIN_TREE[d.animal].includes(r.tag)||r.tag===d.animal||state.custom.proteinType.includes(r.tag)&&r.animal===d.animal)));
       const gf=list.filter(r=>!glutenHits(r).length), blocked=list.filter(r=>glutenHits(r).length);
       const isCustom=state.custom.proteinType.includes(d.proteinType);
       const bones=[...new Set(gf.map(r=>r.bone).filter(Boolean))];
       if(bones.length>1){
         html+=`<div class="controls" style="margin:-8px 0 14px">Show: ${["Either",...bones].map(b=>`<button class="${(d.bone||"Either")===b?"primary":""}" data-bone="${b}" style="padding:4px 10px">${b}</button>`).join(" ")}</div>`;
       }
-      const shown = (d.bone&&d.bone!=="Either" ? gf.filter(r=>r.bone===d.bone) : gf).sort(byActive);
+      const shown = (d.bone&&d.bone!=="Either" ? gf.filter(r=>r.bone===d.bone) : gf).sort(byRatingThenActive);
       html+= shown.length
         ? `<div class="recipes">${shown.map(r=>recipeCard(r,d.protein,"protein")).join("")}</div>`
-        : `<div class="empty">Nothing saved for ${d.proteinType.toLowerCase()} yet.</div>`;
-      html+=discoveryBlock("protein", d.proteinType===ANY?d.animal:d.proteinType, shown.length);
+        : `<div class="empty">Nothing saved for ${term.toLowerCase()} yet.</div>`;
+      html+=discoveryBlock("protein", term, shown.length);
       if(blocked.length) html+=`<p class="note">${blocked.length} recipe${blocked.length>1?"s":""} hidden (no gluten-free substitute): ${blocked.map(r=>`${r.name} (${glutenHits(r).join(", ")})`).join("; ")}.</p>`;
     }
     html+=`<div class="nav"><span></span><button class="primary" data-go="starch" ${d.protein?"":"disabled"}>Next</button></div>`;
@@ -491,7 +494,7 @@ function renderChooser(){
     html+=`<h3>${cfg.h}</h3><p class="lede">${cfg.p}</p>
       ${chipRow(state.step,cfg.typeKey,cfg.opts,sel)}`;
     if(sel){
-      const list=RECIPES.filter(r=>r.kind===state.step&&r.tag===sel&&!glutenHits(r).length).sort(byActive);
+      const list=RECIPES.filter(r=>r.kind===state.step&&r.tag===sel&&!glutenHits(r).length).sort(byRatingThenActive);
       html+= list.length
         ? `<div class="recipes">${list.map(r=>recipeCard(r,d[state.step],state.step)).join("")}</div>`
         : `<div class="empty">Nothing saved for ${sel.toLowerCase()} yet.</div>`;
@@ -619,6 +622,7 @@ $main.addEventListener("click",e=>{
   else if(t.dataset.search){ runSearch(t.dataset.search, t.dataset.q); }
   else if(t.dataset.showmore){ state.found.shown=(state.found.shown||SHOW_AT_ONCE)+SHOW_AT_ONCE; render(); }
   else if(t.dataset.del){ deleteRecipe(t.dataset.del); }
+  else if(t.closest("[data-edit]")&&!t.closest("select,label")){ startEdit(t.closest("[data-edit]").dataset.edit); }
   else if(t.dataset.libkind!==undefined){ state.libKind=t.dataset.libkind; renderLibrary(); }
   else if(t.dataset.savefound){ startDraft(state.found.results[+t.dataset.savefound], t.dataset.kind); }
   else if(t.dataset.import){ importUrl(); }
@@ -677,7 +681,7 @@ function fromRow(x){
   return {id:x.id, kind:x.kind, active:x.active_min||0, total:x.total_min||0, method:x.method||undefined, style:x.style||undefined,
     tag, tags:x.tags||[], bone:x.bone||undefined, name:x.name, source:x.source_name||"", rating:+x.rating||0, reviews:x.reviews||0,
     servings:x.servings||4, why:x.why||"", perServing:x.per_serving||{g:0,kcal:0,p:0,c:0,f:0},
-    ingredients:(x.ingredients||[]).map(i=>[i.name,i.qty,i.unit,i.section]), steps:x.steps&&x.steps.length?x.steps:undefined, meat:x.meat||undefined, spoonId:x.spoonacular_id||null};
+    ingredients:(x.ingredients||[]).map(i=>[i.name,i.qty,i.unit,i.section]), steps:x.steps&&x.steps.length?x.steps:undefined, meat:x.meat||undefined, spoonId:x.spoonacular_id||null, animal:x.animal||undefined, sourceUrl:x.source_url||""};
 }
 function mondayOf(d){ const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
 function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -739,15 +743,12 @@ const kindTags = {protein:()=>Object.values(PROTEIN_TREE).flat(), starch:()=>[..
 const METHODS = ["Oven","Stovetop","Broiler","Grill","Air fryer","Dutch oven","Sheet pan","Slow cooker","Skillet","Pot roast","Grill or broiler"];
 const STYLES = ["Sheet pan","Dutch oven","Air fryer","Skillet","Pot roast","Slow cooker","One pot"];
 
-const AUTO_SEARCH_BELOW = 5;   // search Spoonacular automatically when the library has fewer than this many
 const SEARCH_COUNT = 12;   // fetched per search (costs about one point)
 const SHOW_AT_ONCE = 6;    // shown at a time
 function discoveryBlock(kind, term, libCount){
   const key=kind+"|"+term;
   const f=state.found&&state.found.key===key?state.found:null;
-  if(!f && term && libCount<AUTO_SEARCH_BELOW && state.autoKey!==key){ state.autoKey=key; setTimeout(()=>runSearch(kind,term),0); }
-  let out=`<h3 style="margin-top:26px">From Spoonacular</h3>
-    <div class="controls" style="margin-top:4px"><button data-search="${kind}" data-q="${term}">${f?"Search again":"Search for "+term.toLowerCase()}</button>${f&&f.status?`<span>${f.status}</span>`:""}</div>`;
+  let out=`<div class="controls" style="margin-top:22px"><button class="chip" data-search="${kind}" data-q="${term}" style="background:var(--onepan);color:#fff;border-color:var(--onepan)">${f?"Search Spoonacular again":"Search Spoonacular for "+term.toLowerCase()}</button>${f&&f.status?`<span>${f.status}</span>`:""}</div>`;
   if(f&&f.results&&f.results.length){
     const sorted=f.results.map((x,i)=>({x,i,a:fromSpoon(x).active})).sort((p,q)=>p.a-q.a);
     const lim=f.shown||SHOW_AT_ONCE;
@@ -832,7 +833,7 @@ async function importUrl(){
 }
 function renderAdd(){
   const d=state.draft;
-  let html=`<h2>Add a recipe</h2>`;
+  let html=`<h2>${d&&d.editId?"Edit recipe":"Add a recipe"}</h2>`;
   if(!d){
     html+=`<p class="lede">Paste a link to a recipe page. Spoonacular reads the ingredients, steps and nutrition; you confirm the details, then it's in your library.</p>
       <div class="urlrow"><input id="recipeUrl" type="url" placeholder="https://www.seriouseats.com/…" value="${state.pendingUrl||""}"><button class="primary" data-import="1">Import</button></div>
@@ -843,7 +844,7 @@ function renderAdd(){
   }
   const opt=(list,cur)=>list.map(o=>`<option ${o===cur?"selected":""}>${o}</option>`).join("");
   const tagList = d.kind==="onepan" ? [] : kindTags[d.kind]();
-  html+=`<p class="lede">Check what was read and fix anything that's off. The category and chip decide where this recipe shows up in the planner.</p>
+  html+=`<p class="lede">${d.editId?"Change anything and save.":"Check what was read and fix anything that's off."} The category and chip decide where this recipe shows up in the planner.</p>
     <div class="form">
       <label class="wide">Name<input data-f="name" value="${esc(d.name)}"></label>
       <label>Category<select data-f="kind">${opt(["protein","starch","veg","onepan"],d.kind)}</select></label>
@@ -868,7 +869,7 @@ function renderAdd(){
     </div>
     ${glutenHits(d).length?`<p class="note" style="color:var(--protein)">Contains ${glutenHits(d).join(", ")} — no gluten-free swap, so the planner will hide this one.</p>`:swapsFor(d).length?`<p class="note">Swaps the planner will apply: ${swapsFor(d).join("; ")}</p>`:""}
     <div class="status">${state.addStatus||""}</div>
-    <div class="nav"><button data-canceldraft="1">Cancel</button><button class="primary" data-savedraft="1">Save to library</button></div>`;
+    <div class="nav"><button data-canceldraft="1">Cancel</button><button class="primary" data-savedraft="1">${d.editId?"Save changes":"Save to library"}</button></div>`;
   $main.innerHTML=html;
 }
 function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
@@ -890,13 +891,15 @@ async function saveDraft(){
   if(d.kind!=="onepan") d.tag=d.tag.trim().replace(/^./,c=>c.toUpperCase());
   state.addStatus="Saving…"; renderAdd();
   const row=toRow(d); row.source_url=d.sourceUrl||null; row.spoonacular_id=d.spoonId||null;
-  const {data,error}=await db.from("recipes").insert(row).select("*").single();
+  const {data,error}= d.editId
+    ? await db.from("recipes").update(row).eq("id",d.editId).select("*").single()
+    : await db.from("recipes").insert(row).select("*").single();
   if(error){ state.addStatus="Couldn't save: "+error.message; renderAdd(); return; }
-  RECIPES.push(fromRow(data));
+  if(d.editId) RECIPES[RECIPES.findIndex(x=>x.id===d.editId)]=fromRow(data); else RECIPES.push(fromRow(data));
   const key={protein:"proteinType",starch:"starchType",veg:"vegType"}[d.kind];
   if(key){ const known=kindTags[d.kind](); if(!known.includes(d.tag)&&!state.custom[key].includes(d.tag)) state.custom[key].push(d.tag); }
   state.draft=null; state.addStatus=`Saved "${d.name}".`;
-  state.view=state.draftReturn==="chooser"?"chooser":"add"; render(); window.scrollTo({top:0});
+  state.view=state.draftReturn==="chooser"?"chooser":state.draftReturn==="library"?"library":"add"; render(); window.scrollTo({top:0});
 }
 
 /* ---------- My library ---------- */
@@ -919,12 +922,17 @@ function renderLibrary(){
   $main.innerHTML=html;
   const s=document.getElementById("libSearch"); if(s){ s.addEventListener("input",e=>{ state.libQuery=e.target.value; const pos=s.selectionStart; renderLibrary(); const s2=document.getElementById("libSearch"); s2.focus(); s2.setSelectionRange(pos,pos); }); }
 }
+function startEdit(id){
+  const r=byId(id); if(!r||!r.id) return;
+  const d=JSON.parse(JSON.stringify(r)); d.editId=r.id; d.tag=d.tag||""; d.tags=d.tags||[]; d.steps=d.steps||[]; d.why=d.why||""; d.source=d.source||"";
+  state.draftReturn="library"; state.draft=d; state.addStatus=""; state.view="add"; render(); window.scrollTo({top:0});
+}
 function libraryCard(r){
   const where = r.kind==="onepan" ? (r.tags||[]).join(" · ") : (r.tag||"—");
   const hits=glutenHits(r);
-  return `<div class="card ${r.kind}${r.active>state.activeLimit?" slow":""}">
+  return `<div class="card ${r.kind}${r.active>state.activeLimit?" slow":""}" data-edit="${r.id}" style="cursor:pointer">
     <h3>${r.name}</h3>
-    <div class="src">${KIND_LABEL[r.kind]} · ${where}${r.bone?" · "+r.bone:""}</div>
+    <div class="src">${KIND_LABEL[r.kind]} · ${where}${r.bone?" · "+r.bone:""} · <u>Edit</u></div>
     <div class="src">${r.source||""}${r.style?" · "+r.style:r.method?" · "+r.method:""}</div>
     <div class="src time${r.active>state.activeLimit?" over":""}">${r.active} min active · ${r.total} min total</div>
     ${r.why?`<div class="why">${r.why}</div>`:""}
