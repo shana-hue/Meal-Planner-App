@@ -64,6 +64,7 @@
   .k-protein .chip.on{background:var(--protein);border-color:var(--protein)}
   .k-starch .chip.on{background:var(--starch);border-color:var(--starch)}
   .k-veg .chip.on{background:var(--veg);border-color:var(--veg)}
+  .k-lib .chip.on{background:var(--ink);border-color:var(--ink)}
 
   .recipes{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
   .card{border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:14px 16px;display:flex;flex-direction:column;gap:8px;border-top-width:4px}
@@ -152,6 +153,7 @@
       <button id="showGrocery" class="primary">Build grocery lists</button>
       <button id="showPlate">Plate calculator</button>
       <button id="showAdd">Add a recipe</button>
+      <button id="showLibrary">My library</button>
       <button id="clearWeek" class="quiet">Clear the week</button>
       <div class="saved" id="saved"></div>
       <button id="signout" class="quiet">Sign out</button>
@@ -397,7 +399,7 @@ function nextStep(d){
   return "summary";
 }
 
-function render(){ queueSave(); renderRail(); state.view==="grocery"?renderGrocery():state.view==="plate"?renderPlate():state.view==="cook"?renderCook():state.view==="add"?renderAdd():renderChooser(); }
+function render(){ queueSave(); renderRail(); state.view==="grocery"?renderGrocery():state.view==="plate"?renderPlate():state.view==="cook"?renderCook():state.view==="add"?renderAdd():state.view==="library"?renderLibrary():renderChooser(); }
 
 /* ---------- plate calculator ---------- */
 function renderPlate(){
@@ -600,6 +602,7 @@ document.getElementById("dayCount").onchange=e=>{state.dayCount=+e.target.value;
 document.getElementById("showGrocery").onclick=()=>{state.view="grocery";render();};
 document.getElementById("showPlate").onclick=()=>{state.view="plate";render();};
 document.getElementById("showAdd").onclick=()=>{state.view="add";state.draft=null;state.addStatus="";render();};
+document.getElementById("showLibrary").onclick=()=>{state.view="library";render();};
 document.getElementById("clearWeek").onclick=()=>{if(confirm("Clear every day this week?")){state.week=state.week.map(blankDay);state.step="protein";state.view="chooser";render();}};
 
 $main.addEventListener("click",e=>{
@@ -614,6 +617,9 @@ $main.addEventListener("click",e=>{
   else if(t.dataset.removeplate){ state.plate=state.plate.filter(x=>x.id!==t.dataset.removeplate); render(); }
   else if(t.dataset.clearplate){ state.plate=[]; render(); }
   else if(t.dataset.search){ runSearch(t.dataset.search, t.dataset.q); }
+  else if(t.dataset.showmore){ state.found.shown=(state.found.shown||SHOW_AT_ONCE)+SHOW_AT_ONCE; render(); }
+  else if(t.dataset.del){ deleteRecipe(t.dataset.del); }
+  else if(t.dataset.libkind!==undefined){ state.libKind=t.dataset.libkind; renderLibrary(); }
   else if(t.dataset.savefound){ startDraft(state.found.results[+t.dataset.savefound], t.dataset.kind); }
   else if(t.dataset.import){ importUrl(); }
   else if(t.dataset.savedraft){ saveDraft(); }
@@ -734,7 +740,8 @@ const METHODS = ["Oven","Stovetop","Broiler","Grill","Air fryer","Dutch oven","S
 const STYLES = ["Sheet pan","Dutch oven","Air fryer","Skillet","Pot roast","Slow cooker","One pot"];
 
 const AUTO_SEARCH_BELOW = 5;   // search Spoonacular automatically when the library has fewer than this many
-const SEARCH_COUNT = 12;
+const SEARCH_COUNT = 12;   // fetched per search (costs about one point)
+const SHOW_AT_ONCE = 6;    // shown at a time
 function discoveryBlock(kind, term, libCount){
   const key=kind+"|"+term;
   const f=state.found&&state.found.key===key?state.found:null;
@@ -742,7 +749,10 @@ function discoveryBlock(kind, term, libCount){
   let out=`<h3 style="margin-top:26px">From Spoonacular</h3>
     <div class="controls" style="margin-top:4px"><button data-search="${kind}" data-q="${term}">${f?"Search again":"Search for "+term.toLowerCase()}</button>${f&&f.status?`<span>${f.status}</span>`:""}</div>`;
   if(f&&f.results&&f.results.length){
-    out+=`<div class="recipes" style="margin-top:14px">${f.results.map((x,i)=>({x,i,a:fromSpoon(x).active})).sort((p,q)=>p.a-q.a).map(({x,i})=>foundCard(x,i,kind)).join("")}</div>`;
+    const sorted=f.results.map((x,i)=>({x,i,a:fromSpoon(x).active})).sort((p,q)=>p.a-q.a);
+    const lim=f.shown||SHOW_AT_ONCE;
+    out+=`<div class="recipes" style="margin-top:14px">${sorted.slice(0,lim).map(({x,i})=>foundCard(x,i,kind)).join("")}</div>`;
+    if(sorted.length>lim) out+=`<div class="controls" style="margin-top:10px"><button data-showmore="1">Show ${Math.min(SHOW_AT_ONCE,sorted.length-lim)} more</button></div>`;
   }
   return out;
 }
@@ -888,6 +898,56 @@ async function saveDraft(){
   state.draft=null; state.addStatus=`Saved "${d.name}".`;
   state.view=state.draftReturn==="chooser"?"chooser":"add"; render(); window.scrollTo({top:0});
 }
+
+/* ---------- My library ---------- */
+state.libKind=""; state.libQuery="";
+const KIND_LABEL={protein:"Protein",starch:"Starch",veg:"Vegetable",onepan:"One-pan"};
+function renderLibrary(){
+  const q=state.libQuery.toLowerCase();
+  const all=RECIPES.slice();
+  const list=all.filter(r=>(!state.libKind||r.kind===state.libKind)&&(!q||(r.name+" "+(r.tag||"")+" "+(r.tags||[]).join(" ")+" "+(r.source||"")).toLowerCase().includes(q)))
+    .sort((a,b)=>(b.rating-a.rating)||a.name.localeCompare(b.name));
+  const counts=k=>all.filter(r=>r.kind===k).length;
+  let html=`<h2>My library</h2><p class="lede">${all.length} recipes saved. Rating is yours — it decides the order recipes appear in when you plan.</p>
+    <div class="chips k-lib" style="margin-top:8px">
+      <button class="chip${state.libKind===""?" on":""}" data-libkind="">All (${all.length})</button>
+      ${Object.keys(KIND_LABEL).map(k=>`<button class="chip${state.libKind===k?" on":""}" data-libkind="${k}">${KIND_LABEL[k]} (${counts(k)})</button>`).join("")}
+    </div>
+    <div class="urlrow"><input id="libSearch" type="search" placeholder="Search names, chips, sources…" value="${esc(state.libQuery)}"></div>
+    <div class="recipes" style="margin-top:14px">${list.map(libraryCard).join("")||`<div class="empty">Nothing matches.</div>`}</div>
+    <div class="nav" style="margin-top:20px"><button data-back="1">Back to planning</button></div>`;
+  $main.innerHTML=html;
+  const s=document.getElementById("libSearch"); if(s){ s.addEventListener("input",e=>{ state.libQuery=e.target.value; const pos=s.selectionStart; renderLibrary(); const s2=document.getElementById("libSearch"); s2.focus(); s2.setSelectionRange(pos,pos); }); }
+}
+function libraryCard(r){
+  const where = r.kind==="onepan" ? (r.tags||[]).join(" · ") : (r.tag||"—");
+  const hits=glutenHits(r);
+  return `<div class="card ${r.kind}${r.active>state.activeLimit?" slow":""}">
+    <h3>${r.name}</h3>
+    <div class="src">${KIND_LABEL[r.kind]} · ${where}${r.bone?" · "+r.bone:""}</div>
+    <div class="src">${r.source||""}${r.style?" · "+r.style:r.method?" · "+r.method:""}</div>
+    <div class="src time${r.active>state.activeLimit?" over":""}">${r.active} min active · ${r.total} min total</div>
+    ${r.why?`<div class="why">${r.why}</div>`:""}
+    ${hits.length?`<div class="src" style="color:var(--protein)">Hidden from planning: contains ${hits.join(", ")}</div>`:swapsFor(r).length?`<div class="src">Swap: ${swapsFor(r).join("; ")}</div>`:""}
+    ${macroLine(r.perServing)}
+    <div class="row"><label class="src">Rating <select data-rate="${r.id}">${[0,1,2,3,4,5].map(n=>`<option ${n===Math.round(r.rating)?"selected":""}>${n}</option>`).join("")}</select></label>
+      <button data-del="${r.id}">Delete</button></div>
+  </div>`;
+}
+async function rateRecipe(id,n){
+  const r=byId(id); if(!r) return; r.rating=n;
+  const {error}=await db.from("recipes").update({rating:n}).eq("id",id);
+  if(error) alert("Couldn't save rating: "+error.message);
+}
+async function deleteRecipe(id){
+  const r=byId(id); if(!r||!confirm(`Delete "${r.name}" from your library?`)) return;
+  const {error}=await db.from("recipes").delete().eq("id",id);
+  if(error){ alert("Couldn't delete: "+error.message); return; }
+  RECIPES=RECIPES.filter(x=>x.id!==id);
+  state.week.forEach(d=>{ ["protein","starch","veg","onepan"].forEach(k=>{ if(d[k]===id) d[k]=null; }); });
+  queueSave(); renderLibrary();
+}
+$main.addEventListener("change",e=>{ if(e.target.dataset.rate){ rateRecipe(e.target.dataset.rate,+e.target.value); } });
 
 /* ---------- auth ---------- */
 const $ = id=>document.getElementById(id);
