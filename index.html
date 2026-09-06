@@ -332,7 +332,7 @@ const state = {
   custom:{proteinType:[],starchType:[],vegType:[]},  // things typed in via "Other"
   typing:null,   // which row has the text box open
 };
-function blankDay(){ return {animal:null,proteinType:null,bone:null,starchType:null,vegType:null,protein:null,starch:null,veg:null,onepan:null,leanness:{}}; }
+function blankDay(){ return {animal:null,proteinType:null,bone:null,starchType:null,vegType:null,protein:null,starch:null,veg:null,onepan:null,leanness:{},extras:[]}; }
 function curLean(){ const d=state.week[state.activeDay]; d.leanness=d.leanness||{}; return d.leanness; }
 // Raw, per 100 g (USDA). kcal / protein / fat; carbs are 0 for all.
 const LEANNESS = {
@@ -385,13 +385,18 @@ function renderRail(){
       dishes+=d.protein?`<div class="dish"><span class="dot protein"></span>${byId(d.protein).name}</div>`:"";
       dishes+=d.starch?`<div class="dish"><span class="dot starch"></span>${byId(d.starch).name}</div>`:"";
       dishes+=d.veg?`<div class="dish"><span class="dot veg"></span>${byId(d.veg).name}</div>`:"";
-      if(!dishes) dishes=`<div class="dish empty">Nothing planned</div>`;
     }
-    const planned=d.onepan||d.protein||d.starch||d.veg;
+    (d.extras||[]).forEach(id=>{ dishes+=`<div class="dish"><span class="dot ${byId(id).kind}" style="opacity:.5"></span>${byId(id).name}</div>`; });
+    if(!dishes) dishes=`<div class="dish empty">Nothing planned</div>`;
+    const planned=d.onepan||d.protein||d.starch||d.veg||(d.extras||[]).length;
     b.innerHTML=`<div class="dname">${DAYNAMES[i]}</div><div>${dishes}${planned?`<span class="dish" style="color:var(--mute);display:inline-block;margin-top:4px;text-decoration:underline" data-cookday="${i}">Cook</span>`:""}</div>`;
     b.querySelector("[data-cookday]")?.addEventListener("click",ev=>{ev.stopPropagation();state.activeDay=i;state.view="cook";render();window.scrollTo({top:0});});
     $days.appendChild(b);
   }
+}
+function dayDishes(d){
+  const main = d.onepan ? [byId(d.onepan)] : [d.protein,d.starch,d.veg].filter(Boolean).map(byId);
+  return main.concat((d.extras||[]).map(byId));
 }
 function nextStep(d){
   if(d.onepan) return "summary";
@@ -451,8 +456,9 @@ function recipeCard(r,chosenId,kind){
     ${swapsFor(r).length?`<div class="src">Swap: ${swapsFor(r).join("; ")}</div>`:""}
     ${leanSelect(r)}
     ${macroLine(ps(r))}
-    <div class="row"><span class="src">Serves ${r.servings}</span>
-      <button class="${chosen?"":"primary"}" data-pick="${kind}" data-id="${r.id}">${chosen?"Chosen":"Choose this"}</button></div>
+    <div class="row"><span class="src">Serves ${r.servings}</span><span style="display:flex;gap:6px">
+      ${kind==="onepan"||chosen?"":(state.week[state.activeDay].extras||[]).includes(r.id)?`<button data-removeextra-dish="${r.id}">Added as extra ✕</button>`:`<button data-alsoadd="${r.id}" title="Add alongside the main choice">Also add</button>`}
+      <button class="${chosen?"":"primary"}" data-pick="${kind}" data-id="${r.id}">${chosen?"Chosen":"Choose this"}</button></span></div>
   </div>`;
 }
 
@@ -522,15 +528,15 @@ function renderChooser(){
   }
 
   else if(state.step==="summary"){
-    const dishes = d.onepan ? [byId(d.onepan)] : [d.protein,d.starch,d.veg].filter(Boolean).map(byId);
+    const dishes = dayDishes(d);
     if(!dishes.length){ html+=`<div class="empty">Nothing chosen for ${dayLabel} yet.</div><div class="nav"><button data-go="protein">Start with the protein</button></div>`; }
     else{
       const tot=dishes.reduce((a,r)=>{const m=ps(r);a.g+=m.g;a.kcal+=m.kcal;a.p+=m.p;a.c+=m.c;a.f+=m.f;return a;},{g:0,kcal:0,p:0,c:0,f:0});
       const active=dishes.reduce((a,r)=>a+r.active,0), longest=Math.max(...dishes.map(r=>r.total));
       const over=active>state.activeLimit;
-      html+=`<h3>Per serving</h3><p class="lede">One recipe serving of each dish, cooked weight. For what you actually plate, use the plate calculator in the sidebar.</p>
+      html+=`<h3>Per serving</h3><p class="lede">One recipe serving of each dish, cooked weight. Extras (dressings, a second veg) are added with "Also add" on any recipe card. For what you actually plate, use the plate calculator in the sidebar.</p>
       <table><thead><tr><th>Dish</th><th class="num">Serving</th><th class="num">Calories</th><th class="num">Protein</th><th class="num">Carbs</th><th class="num">Fat</th></tr></thead><tbody>
-      ${dishes.map(r=>`<tr><td><span class="badge ${r.kind}">${r.kind==="onepan"?r.style:r.kind}</span>${r.name}</td><td class="num">${ps(r).g} g</td><td class="num">${ps(r).kcal}</td><td class="num">${ps(r).p} g</td><td class="num">${ps(r).c} g</td><td class="num">${ps(r).f} g</td></tr>`).join("")}
+      ${dishes.map(r=>`<tr><td><span class="badge ${r.kind}">${r.kind==="onepan"?r.style:r.kind}</span>${r.name}${(d.extras||[]).includes(r.id)?` <button class="quiet" data-removeextra-dish="${r.id}" style="padding:0 4px" title="Remove extra">✕</button>`:""}</td><td class="num">${ps(r).g} g</td><td class="num">${ps(r).kcal}</td><td class="num">${ps(r).p} g</td><td class="num">${ps(r).c} g</td><td class="num">${ps(r).f} g</td></tr>`).join("")}
       <tr class="total"><td>Whole plate</td><td class="num">${tot.g} g</td><td class="num">${tot.kcal}</td><td class="num">${tot.p} g</td><td class="num">${tot.c} g</td><td class="num">${tot.f} g</td></tr>
       </tbody></table>
       <p class="note" ${over?'style="color:var(--protein)"':""}>About ${active} minutes of active cooking${over?`, over your ${state.activeLimit}-minute limit. A one-pan version would bring it down.`:` (limit ${state.activeLimit})`}. Longest thing on the stove or in the oven: ${longest} minutes.</p>
@@ -544,7 +550,7 @@ function renderChooser(){
 /* ---------- tonight: directions ---------- */
 function renderCook(){
   const d=state.week[state.activeDay], dayLabel=DAYNAMES[state.activeDay];
-  const dishes = d.onepan ? [byId(d.onepan)] : [d.protein,d.starch,d.veg].filter(Boolean).map(byId);
+  const dishes = dayDishes(d);
   const n=state.cookServings;
   const order=[...dishes].sort((a,b)=>b.total-a.total);
   let html=`<h2>${dayLabel}: cook</h2>
@@ -568,7 +574,7 @@ function aggregate(dayIdxs){
   const map=new Map();
   dayIdxs.forEach(i=>{
     const d=state.week[i];
-    const dishes = d.onepan ? [byId(d.onepan)] : [d.protein,d.starch,d.veg].filter(Boolean).map(byId);
+    const dishes = dayDishes(d);
     dishes.forEach(r=>r.ingredients.forEach(([raw,qty,unit,section])=>{
       let name=swapName(raw);
       if(r.meat&&raw===r.meat.kind.toLowerCase()) name=`${raw}, ${(d.leanness||{})[r.id]||r.meat.default}`;
@@ -586,7 +592,7 @@ function fmtQty(q,unit){ const n=Math.round(q*100)/100; return unit?`${n} ${unit
 function listHtml(title,days,trip){
   const groups=aggregate(days);
   const order=["meat","seafood","produce","dairy","pantry"];
-  const planned=days.filter(i=>{const d=state.week[i];return d.onepan||d.protein||d.starch||d.veg;});
+  const planned=days.filter(i=>dayDishes(state.week[i]).length);
   let h=`<div class="list"><h3>${title}</h3><div class="sub">${days.map(i=>DAYNAMES[i]).join(", ")} · ${planned.length} of ${days.length} dinners planned</div>`;
   if(!Object.keys(groups).length) h+=`<div class="empty">Nothing to buy yet. Plan a dinner on one of these days.</div>`;
   order.forEach(s=>{ if(!groups[s]) return; h+=`<h4>${s[0].toUpperCase()+s.slice(1)}</h4><ul>${groups[s].map(x=>`<li><span>${x.name}</span><span>${fmtQty(x.qty,x.unit)}</span></li>`).join("")}</ul>`; });
@@ -628,7 +634,9 @@ $main.addEventListener("click",e=>{
   else if(t.dataset.typing){ state.typing=t.dataset.typing; render(); $main.querySelector("[data-other]")?.focus(); }
   else if(t.dataset.bone){ d.bone=t.dataset.bone; render(); }
   else if(t.dataset.type){ const changed=d[t.dataset.type]!==t.dataset.val; d[t.dataset.type]=t.dataset.val; if(changed){ d[state.step]=null; d.onepan=null; if(state.step==="protein") d.bone=null; } render(); }
-  else if(t.dataset.pick){ const id=t.dataset.id; if(t.dataset.pick==="onepan"){ d.onepan=id||null; } else { d[t.dataset.pick]=id; d.onepan=null; } render(); }
+  else if(t.dataset.pick){ const id=t.dataset.id; if(t.dataset.pick==="onepan"){ d.onepan=id||null; } else { d[t.dataset.pick]=id; d.onepan=null; } d.extras=(d.extras||[]).filter(x=>x!==id); render(); }
+  else if(t.dataset.alsoadd){ d.extras=d.extras||[]; if(!d.extras.includes(t.dataset.alsoadd)) d.extras.push(t.dataset.alsoadd); render(); }
+  else if(t.dataset.removeextraDish){ d.extras=(d.extras||[]).filter(x=>x!==t.dataset.removeextraDish); render(); }
   else if(t.dataset.removeplate){ state.plate=state.plate.filter(x=>x.id!==t.dataset.removeplate); render(); }
   else if(t.dataset.clearplate){ state.plate=[]; render(); }
   else if(t.dataset.search){ runSearch(t.dataset.search, t.dataset.q); }
