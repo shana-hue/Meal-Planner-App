@@ -326,6 +326,7 @@ const state = {
   plate:[],   // [{id, grams}]
   plateLean:{},  // recipeId -> leanness chosen in the plate calculator
   cookServings:4,
+  extras:[],      // [{name, trip:1|2}] other things to buy this week
   weekStart:null, // "YYYY-MM-DD" Monday
   weekId:null,
   custom:{proteinType:[],starchType:[],vegType:[]},  // things typed in via "Other"
@@ -582,13 +583,16 @@ function aggregate(dayIdxs){
   return groups;
 }
 function fmtQty(q,unit){ const n=Math.round(q*100)/100; return unit?`${n} ${unit}`:`${n}`; }
-function listHtml(title,days){
+function listHtml(title,days,trip){
   const groups=aggregate(days);
   const order=["meat","seafood","produce","dairy","pantry"];
   const planned=days.filter(i=>{const d=state.week[i];return d.onepan||d.protein||d.starch||d.veg;});
   let h=`<div class="list"><h3>${title}</h3><div class="sub">${days.map(i=>DAYNAMES[i]).join(", ")} · ${planned.length} of ${days.length} dinners planned</div>`;
   if(!Object.keys(groups).length) h+=`<div class="empty">Nothing to buy yet. Plan a dinner on one of these days.</div>`;
   order.forEach(s=>{ if(!groups[s]) return; h+=`<h4>${s[0].toUpperCase()+s.slice(1)}</h4><ul>${groups[s].map(x=>`<li><span>${x.name}</span><span>${fmtQty(x.qty,x.unit)}</span></li>`).join("")}</ul>`; });
+  const ex=(state.extras||[]).map((x,i)=>({x,i})).filter(({x})=>x.trip===trip);
+  if(ex.length) h+=`<h4>Other</h4><ul>${ex.map(({x,i})=>`<li><span>${esc(x.name)}</span><button class="quiet" data-removeextra="${i}" style="padding:0 6px" title="Remove">✕</button></li>`).join("")}</ul>`;
+  h+=`<div class="controls" style="margin-top:10px"><input data-extra="${trip}" placeholder="Something else for this trip…" style="flex:1;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r)"><button data-addextra="${trip}">Add</button></div>`;
   return h+"</div>";
 }
 function renderGrocery(){
@@ -597,8 +601,8 @@ function renderGrocery(){
   $main.innerHTML=`<h2>Two shopping trips</h2>
     <div class="controls"><label>First trip covers <select id="split">${[...Array(n-1).keys()].map(i=>`<option ${i+1===k?"selected":""}>${i+1}</option>`).join("")}</select> dinners</label>
     <label><input type="checkbox" id="staples" ${state.hideStaples?"checked":""}> Skip pantry staples (oil, salt, spices, stock)</label></div>
-    <div class="grocery">${listHtml("First trip",first)}${listHtml("Second trip",second)}</div>
-    <p class="note">Quantities are summed across recipes and merged when the unit matches. The real version would round up to what you can actually buy (a 2-lb bag, not 1.75 lb).</p>
+    <div class="grocery">${listHtml("First trip",first,1)}${listHtml("Second trip",second,2)}</div>
+    <p class="note">Quantities are summed across recipes and merged when the unit matches. Use "Something else" for anything not tied to a dinner — salad fixings, eggs, milk, fruit. Extras are saved with the week.</p>
     <div class="nav"><button data-back="1">Back to planning</button></div>`;
 }
 
@@ -610,6 +614,12 @@ document.getElementById("showAdd").onclick=()=>{state.view="add";state.draft=nul
 document.getElementById("showLibrary").onclick=()=>{state.view="library";render();};
 document.getElementById("clearWeek").onclick=()=>{if(confirm("Clear every day this week?")){state.week=state.week.map(blankDay);state.step="protein";state.view="chooser";render();}};
 
+$main.addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.dataset.extra){ e.preventDefault(); addExtra(+e.target.dataset.extra); } });
+function addExtra(trip){
+  const inp=$main.querySelector(`[data-extra="${trip}"]`); const name=(inp&&inp.value||"").trim(); if(!name) return;
+  state.extras=state.extras||[]; state.extras.push({name,trip}); queueSave(); renderGrocery();
+  const again=$main.querySelector(`[data-extra="${trip}"]`); if(again) again.focus();
+}
 $main.addEventListener("click",e=>{
   const t=e.target.closest("button,input");
   if(!t) return;
@@ -631,6 +641,8 @@ $main.addEventListener("click",e=>{
   else if(t.dataset.parsetext){ importText(); }
   else if(t.dataset.splittext){ splitWhole(); }
   else if(t.dataset.quick){ quickAdd(t.dataset.quick, t.dataset.q); }
+  else if(t.dataset.addextra){ addExtra(+t.dataset.addextra); }
+  else if(t.dataset.removeextra){ state.extras.splice(+t.dataset.removeextra,1); queueSave(); renderGrocery(); }
   else if(t.dataset.savedraft){ saveDraft(); }
   else if(t.dataset.canceldraft){ state.draft=null; state.view=state.draftReturn||"add"; render(); }
   else if(t.dataset.go){ state.step=t.dataset.go; render(); window.scrollTo({top:0}); }
@@ -717,7 +729,8 @@ async function loadWeek(weekStart){
     state.weekId=data.id; state.dayCount=data.day_count||5;
     state.week=Array.from({length:7},(_,i)=>Object.assign(blankDay(),(data.days||[])[i]||{}));
     if(data.days&&data.days.length&&data.days[0]&&data.days[0]._splitAfter) state.splitAfter=data.days[0]._splitAfter;
-  } else { state.weekId=null; state.dayCount=5; state.week=Array.from({length:7},()=>blankDay()); state.splitAfter=3; }
+    state.extras=(data.days&&data.days[0]&&data.days[0]._extras)||[];
+  } else { state.weekId=null; state.dayCount=5; state.week=Array.from({length:7},()=>blankDay()); state.splitAfter=3; state.extras=[]; }
   state.activeDay=0; state.step=nextStep(state.week[0]); state.view="chooser";
   document.getElementById("dayCount").value=state.dayCount;
   document.getElementById("weekLabel").textContent=fmtWeek(weekStart);
@@ -726,7 +739,7 @@ let saveTimer=null, ready=false;
 function queueSave(){ if(!ready) return; clearTimeout(saveTimer); saveTimer=setTimeout(saveAll,600); }
 async function saveAll(){
   const $s=document.getElementById("saved"); $s.textContent="Saving…";
-  const days=state.week.map((d,i)=>i===0?Object.assign({},d,{_splitAfter:state.splitAfter}):d);
+  const days=state.week.map((d,i)=>i===0?Object.assign({},d,{_splitAfter:state.splitAfter,_extras:state.extras||[]}):d);
   const w={week_start:state.weekStart, day_count:state.dayCount, days};
   const {data,error}=await db.from("week_plans").upsert(w,{onConflict:"user_id,week_start"}).select("id").single();
   if(!error&&data) state.weekId=data.id;
