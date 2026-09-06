@@ -570,23 +570,75 @@ function renderCook(){
 }
 
 /* ---------- grocery ---------- */
+/* ---------- grocery list: make it read like a human wrote it ---------- */
+const JUNK_RE=/\b(comments?|rating|ratings|cook time|prep time|total time|servings?|credit|media|read more|minutes?|yield|print|save|share|advertisement|subscribe|nutrition)\b/i;
+const COUNTABLE={ // name: how much of a measured amount equals one whole item (in cups / Tbsp / tsp)
+  shallot:{cup:0.25,tbsp:3,tsp:9}, onion:{cup:1,tbsp:16,tsp:48}, "red onion":{cup:1,tbsp:16,tsp:48}, lemon:{cup:0.2,tbsp:3,tsp:9}, lime:{cup:0.125,tbsp:2,tsp:6},
+  orange:{cup:0.5,tbsp:6,tsp:18}, tangerine:{cup:0.25,tbsp:4,tsp:12}, "garlic clove":{cup:0.1,tbsp:1.5,tsp:1}, scallion:{cup:0.25,tbsp:2,tsp:6}, carrot:{cup:0.5,tbsp:8,tsp:24},
+  potato:{cup:0.75,tbsp:12,tsp:36}, "sweet potato":{cup:1,tbsp:16,tsp:48}, egg:{cup:0.25,tbsp:4,tsp:12}, avocado:{cup:0.75,tbsp:12,tsp:36}, tomato:{cup:0.75,tbsp:12,tsp:36},
+  cucumber:{cup:1.5,tbsp:24,tsp:72}, zucchini:{cup:1,tbsp:16,tsp:48}, "bell pepper":{cup:1,tbsp:16,tsp:48}, jalapeño:{cup:0.25,tbsp:4,tsp:12}, jalapeno:{cup:0.25,tbsp:4,tsp:12},
+  apple:{cup:1,tbsp:16,tsp:48}, "chili pepper":{cup:0.25,tbsp:4,tsp:12}, celery:{cup:0.5,tbsp:8,tsp:24}, ginger:{cup:0.5,tbsp:8,tsp:24}
+};
+const NO_AMOUNT_RE=/\b(oil|butter|ghee|salt|pepper|peppercorns?|flakes?|spice|spices|powder|paprika|cumin|coriander|oregano|thyme|rosemary|basil|dill|parsley|cilantro|chives?|sage|tarragon|mint|bay lea(f|ves)|masala|curry|turmeric|cinnamon|nutmeg|cayenne|chili|chile|za'?atar|sumac|seasoning|vinegar|mustard|tamari|soy sauce|worcestershire|fish sauce|hot sauce|sriracha|honey|maple|agave|sugar|stock|broth|wine|sherry|vodka|extract|zest|herbs?|sprigs?|garnish|spray|cornstarch|baking|yeast|capers?|olives?)\b/i;
+const HERB_RE=/\b(parsley|cilantro|basil|dill|mint|chives?|thyme|rosemary|sage|tarragon|oregano)\b/i;
+const DROP_RE=/^(water|warm water|hot water|cold water|ice|salad)$|\bfor serving\b|\bfor garnish\b|\boptional\b/i;
+function canonName(raw){
+  let n=String(raw).toLowerCase().trim();
+  n=n.replace(/\(.*?\)/g,"").replace(/[()\[\]]/g,"").replace(/,.*$/,"").replace(/\bplus more.*$/,"").replace(/\bto taste\b/g,"").replace(/\bas needed\b/g,"");
+  n=n.replace(/^(about|approximately)\s+/,"").replace(/^[\d½⅓¼⅔¾⅛\/.\s-]+(cups?|tbsps?|tablespoons?|tsps?|teaspoons?|oz|ounces?|lbs?|pounds?|cloves?|large|medium|small|whole)?\s*/,"");
+  n=n.replace(/\b(fresh|freshly|finely|roughly|thinly|coarsely|chopped|minced|diced|sliced|grated|shredded|crushed|ground|peeled|trimmed|halved|quartered|cubed|juiced|zested|melted|softened|divided|packed|heaping|extra[- ]virgin|large|medium|small|ripe|whole|raw|cooked|dried|flat[- ]leaf|italian|kosher|sea|black|white|of|the|a|an)\b/g," ");
+  n=n.replace(/\bjuice\b/g,"").replace(/\bzest\b/g,"").replace(/\s+/g," ").trim();
+  if(/\bgarlic\b/.test(n)) n="garlic clove";
+  if(/\bscallions?\b|\bgreen onions?\b/.test(n)) n="scallion";
+  if(/\bpotatoes?\b/.test(n)&&!/sweet/.test(n)) n=/baby|fingerling|new/.test(n)?"baby potatoes":"potato";
+  if(/^lemons?$/.test(n)) n="lemon"; if(/^limes?$/.test(n)) n="lime";
+  if(/^eggs?$/.test(n)) n="egg";
+  if(/^shallots?$/.test(n)) n="shallot"; if(/^onions?$/.test(n)) n="onion";
+  if(/^carrots?$/.test(n)) n="carrot"; if(/^tomatoes?$/.test(n)) n="tomato";
+  return n;
+}
+function countWord(u){ u=String(u||"").toLowerCase().replace(/\.$/,""); const m=u.match(/^(slice|can|stalk|fillet|head|bunch|sprig|stick|package|pkg|bag|jar|bottle)s?$/); return m?m[1]:""; }
+function unitKey(u){ u=String(u||"").toLowerCase().replace(/\.$/,""); if(/^(tbsps?|tablespoons?)$/.test(u)) return "tbsp"; if(/^(tsps?|teaspoons?)$/.test(u)) return "tsp"; if(/^cups?$/.test(u)) return "cup"; if(/^(lbs?|pounds?)$/.test(u)) return "lb"; if(/^(oz|ounces?)$/.test(u)) return "oz"; if(/^(g|grams?)$/.test(u)) return "g"; if(/^(cloves?|large|medium|small|whole|piece|pieces|stalks?|fillets?|slices?|leaf|leaves|sprigs?|bunch|head|heads|cans?|servings?|)$/.test(u)) return "count"; return u; }
+function pluralize(n,q){ if(q<=1) return n; if(/potato$|tomato$/.test(n)) return n+"es"; if(/y$/.test(n)&&!/ey$/.test(n)) return n.slice(0,-1)+"ies"; if(/s$/.test(n)) return n; return n+"s"; }
 function aggregate(dayIdxs){
   const map=new Map();
   dayIdxs.forEach(i=>{
     const d=state.week[i];
-    const dishes = dayDishes(d);
-    dishes.forEach(r=>r.ingredients.forEach(([raw,qty,unit,section])=>{
-      let name=swapName(raw);
-      if(r.meat&&raw===r.meat.kind.toLowerCase()) name=`${raw}, ${(d.leanness||{})[r.id]||r.meat.default}`;
-      if(state.hideStaples&&STAPLES.includes(name)) return;
-      const key=name+"|"+unit;
-      const cur=map.get(key)||{name,unit,section,qty:0};
-      cur.qty+=qty; map.set(key,cur);
+    dayDishes(d).forEach(r=>r.ingredients.forEach(([raw,qty,unit,section])=>{
+      if(!raw||JUNK_RE.test(raw)||!/[a-z]/i.test(raw)) return;
+      let name=canonName(swapName(String(raw)));
+      if(!name||DROP_RE.test(name)) return;
+      if(r.meat&&String(raw).toLowerCase()===r.meat.kind.toLowerCase()) name=`${name}, ${(d.leanness||{})[r.id]||r.meat.default}`;
+      if(state.hideStaples&&STAPLES.some(s=>name===s||name===canonName(s))) return;
+      let uk=unitKey(unit), q=+qty||0;
+      const cname=Object.keys(COUNTABLE).find(k=>name===k||name===k+"s"||(k==="garlic clove"&&name==="garlic clove"));
+      let mode; // "count" | "amount" | "plain"
+      if(r.plain||uk==="serving"||uk==="servings"){ mode="plain"; }
+      else if(cname){ mode="count"; const conv=COUNTABLE[cname]; if(uk==="cup") q=q/conv.cup; else if(uk==="tbsp") q=q/conv.tbsp; else if(uk==="tsp") q=q/conv.tsp; else if(uk!=="count"&&uk!=="lb"&&uk!=="oz") q=1; if(uk==="lb"||uk==="oz"){ mode="amount"; } }
+      else if(section==="meat"||section==="seafood"){ mode="amount"; if(uk==="oz"){ q=q/16; uk="lb"; } if(uk==="g"){ q=q/454; uk="lb"; } if(uk==="count"&&q<=0) mode="plain"; }
+      else if(HERB_RE.test(name)&&uk!=="count"){ mode="plain"; name=name.replace(/\s*(leaves|sprigs?)$/,""); }
+      else if(NO_AMOUNT_RE.test(name)||uk==="tsp"||uk==="tbsp"||uk==="pinch"||uk==="dash"){ mode="plain"; }
+      else if(uk==="count"){ mode="count"; }
+      else { mode="amount"; }
+      const cw=mode==="count"&&!cname?countWord(unit):"";
+      const key=name+"|"+(mode==="amount"?uk:mode)+"|"+cw;
+      const cur=map.get(key)||{name,unit:uk,section,qty:0,mode,cw};
+      cur.qty+=q; map.set(key,cur);
     }));
   });
   const groups={};
   [...map.values()].sort((a,b)=>a.name.localeCompare(b.name)).forEach(x=>(groups[x.section]=groups[x.section]||[]).push(x));
   return groups;
+}
+function fmtItem(x){
+  if(x.mode==="plain") return {name:x.name,qty:""};
+  if(x.mode==="count"){ const n=Math.max(1,Math.ceil(x.qty-0.05)); if(x.cw) return {name:x.name,qty:`${n} ${x.cw}${n>1?"s":""}`}; const nm=x.name==="garlic clove"?"garlic":pluralize(x.name,n); return {name:nm,qty:x.name==="garlic clove"?`${n} clove${n>1?"s":""}`:String(n)}; }
+  let q=x.qty, u=x.unit;
+  if(u==="lb"){ q=Math.ceil(q*4)/4; return {name:x.name,qty:`${q} lb`}; }
+  if(u==="oz"){ q=Math.ceil(q); return {name:x.name,qty:`${q} oz`}; }
+  if(u==="cup"){ q=Math.ceil(q*4)/4; return {name:x.name,qty:`${q} cup${q>1?"s":""}`}; }
+  if(u==="g"){ q=Math.ceil(q/50)*50; return {name:x.name,qty:`${q} g`}; }
+  q=Math.ceil(q*4)/4; return {name:x.name,qty:u?`${q} ${u}`:String(q)};
 }
 function fmtQty(q,unit){ const n=Math.round(q*100)/100; return unit?`${n} ${unit}`:`${n}`; }
 function listHtml(title,days,trip){
@@ -595,7 +647,7 @@ function listHtml(title,days,trip){
   const planned=days.filter(i=>dayDishes(state.week[i]).length);
   let h=`<div class="list"><h3>${title}</h3><div class="sub">${days.map(i=>DAYNAMES[i]).join(", ")} · ${planned.length} of ${days.length} dinners planned</div>`;
   if(!Object.keys(groups).length) h+=`<div class="empty">Nothing to buy yet. Plan a dinner on one of these days.</div>`;
-  order.forEach(s=>{ if(!groups[s]) return; h+=`<h4>${s[0].toUpperCase()+s.slice(1)}</h4><ul>${groups[s].map(x=>`<li><span>${x.name}</span><span>${fmtQty(x.qty,x.unit)}</span></li>`).join("")}</ul>`; });
+  order.forEach(s=>{ if(!groups[s]) return; h+=`<h4>${s[0].toUpperCase()+s.slice(1)}</h4><ul>${groups[s].map(x=>{const f=fmtItem(x); return `<li><span>${esc(f.name)}</span><span>${f.qty}</span></li>`;}).join("")}</ul>`; });
   const ex=(state.extras||[]).map((x,i)=>({x,i})).filter(({x})=>x.trip===trip);
   if(ex.length) h+=`<h4>Other</h4><ul>${ex.map(({x,i})=>`<li><span>${esc(x.name)}</span><button class="quiet" data-removeextra="${i}" style="padding:0 6px" title="Remove">✕</button></li>`).join("")}</ul>`;
   h+=`<div class="controls" style="margin-top:10px"><input data-extra="${trip}" placeholder="Something else for this trip…" style="flex:1;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r)"><button data-addextra="${trip}">Add</button></div>`;
@@ -608,7 +660,7 @@ function renderGrocery(){
     <div class="controls"><label>First trip covers <select id="split">${[...Array(n-1).keys()].map(i=>`<option ${i+1===k?"selected":""}>${i+1}</option>`).join("")}</select> dinners</label>
     <label><input type="checkbox" id="staples" ${state.hideStaples?"checked":""}> Skip pantry staples (oil, salt, spices, stock)</label></div>
     <div class="grocery">${listHtml("First trip",first,1)}${listHtml("Second trip",second,2)}</div>
-    <p class="note">Quantities are summed across recipes and merged when the unit matches. Use "Something else" for anything not tied to a dinner — salad fixings, eggs, milk, fruit. Extras are saved with the week.</p>
+    <p class="note">Pantry items are listed by name only. Produce rounds up to whole items; meat and fish to the nearest quarter pound. Use "Something else" for anything not tied to a dinner. Extras are saved with the week.</p>
     <div class="nav"><button data-back="1">Back to planning</button></div>`;
 }
 
@@ -907,8 +959,8 @@ function renderAdd(){
       <label>Carbs g<input data-f="ps.c" type="number" value="${d.perServing.c}"></label>
       <label>Fat g<input data-f="ps.f" type="number" value="${d.perServing.f}"></label>
       <label class="wide">One-line note (shows on the card)<input data-f="why" value="${esc(d.why||"")}" placeholder="What's good about it"></label>
-      <label class="wide">Ingredients (${d.ingredients.length})<textarea readonly>${esc(d.ingredients.map(([n,q,u])=>`${q} ${u} ${n}`.trim()).join("\n"))}</textarea></label>
-      <label class="wide">Steps (${d.steps.length})<textarea readonly>${esc(d.steps.map((s,i)=>`${i+1}. ${s}`).join("\n"))}</textarea></label>
+      <label class="wide">Ingredients (${d.ingredients.length}) — one per line as "amount unit name"; delete any junk lines<textarea data-f="ingredientsText">${esc(d.ingredients.map(([n,q,u])=>`${q||""} ${u||""} ${n}`.replace(/\s+/g," ").trim()).join("\n"))}</textarea></label>
+      <label class="wide">Steps (${d.steps.length}) — one per line<textarea data-f="stepsText">${esc(d.steps.join("\n"))}</textarea></label>
     </div>
     ${glutenHits(d).length?`<p class="note" style="color:var(--protein)">Contains ${glutenHits(d).join(", ")} — no gluten-free swap, so the planner will hide this one.</p>`:swapsFor(d).length?`<p class="note">Swaps the planner will apply: ${swapsFor(d).join("; ")}</p>`:""}
     <div class="status">${state.addStatus||""}</div>
@@ -921,6 +973,8 @@ $main.addEventListener("input",e=>{
   if(map[e.target.id]){ state.txt[map[e.target.id]]=e.target.value; return; }
   const f=e.target.dataset.f; if(!f||!state.draft) return;
   const d=state.draft, v=e.target.value;
+  if(f==="ingredientsText"){ d.ingredients=parseIngredientLines(v, d.ingredients); return; }
+  if(f==="stepsText"){ d.steps=v.split(/\n/).map(s=>s.replace(/^\s*\d+[\.\)]\s*/,"").trim()).filter(Boolean); return; }
   if(f.startsWith("ps.")) d.perServing[f.slice(3)]=+v||0;
   else if(f==="tags") d.tags=v.split(",").map(s=>s.trim()).filter(Boolean);
   else if(["active","total","servings","rating"].includes(f)) d[f]=+v||0;
@@ -928,6 +982,25 @@ $main.addEventListener("input",e=>{
   if(f==="kind"||f==="method"){ if(f==="kind"&&v==="onepan"&&!d.style) d.style=STYLES.find(s=>s===d.method)||"One pot"; renderAdd(); }
 });
 $main.addEventListener("change",e=>{ const f=e.target.dataset.f; if(f&&state.draft&&(f==="kind"||f==="method"||f==="bone"||f==="style"||f==="rating")){ state.draft[f]= f==="rating"?+e.target.value:e.target.value; if(f==="kind"){ if(e.target.value==="onepan"&&!state.draft.style) state.draft.style=STYLES.find(s=>s===state.draft.method)||"One pot"; renderAdd(); } } });
+// "1.5 lb chicken thighs" -> [name, qty, unit, section], keeping the old section when the name is unchanged
+function parseIngredientLines(text, prev){
+  const prevBy=new Map((prev||[]).map(i=>[i[0],i]));
+  const FR={"½":.5,"⅓":.334,"¼":.25,"⅔":.667,"¾":.75,"⅛":.125};
+  return text.split(/\n/).map(s=>s.trim()).filter(Boolean).map(line=>{
+    let s=line.replace(/[½⅓¼⅔¾⅛]/g,m=>" "+FR[m]+" ").replace(/\s+/g," ").trim();
+    let qty=0, m;
+    if((m=s.match(/^(\d+)\s+(\d+)\/(\d+)\s*/))){ qty=+m[1]+(+m[2]/+m[3]); s=s.slice(m[0].length); }
+    else if((m=s.match(/^(\d+)\/(\d+)\s*/))){ qty=+m[1]/+m[2]; s=s.slice(m[0].length); }
+    else if((m=s.match(/^(\d+(?:\.\d+)?)\s*/))){ qty=+m[1]; s=s.slice(m[0].length); }
+    let unit="", um=s.match(/^(cups?|tbsps?|tablespoons?|tsps?|teaspoons?|oz|ounces?|lbs?|pounds?|g|grams?|cloves?|cans?|slices?|stalks?|sprigs?|bunch|heads?|pinch|dash|servings?|large|medium|small)\b\.?\s*/i);
+    if(um){ unit=um[1]; s=s.slice(um[0].length); }
+    const name=s.replace(/^(of\s+)/i,"").trim().toLowerCase();
+    const old=prevBy.get(name);
+    return [name, qty, unit, old?old[3]:guessSection(name)];
+  }).filter(i=>i[0]);
+}
+function guessSection(n){ if(/chicken|turkey|pork|beef|lamb|steak|bacon|sausage|ham\b/.test(n)) return "meat"; if(/salmon|shrimp|cod|fish|tuna|scallop|halibut|tilapia|trout/.test(n)) return "seafood"; if(/cheese|milk|cream|yogurt|butter|egg|mozzarella|parmesan|feta/.test(n)) return "dairy"; if(/onion|garlic|lemon|lime|pepper|tomato|potato|carrot|celery|herb|parsley|cilantro|basil|spinach|kale|lettuce|broccoli|zucchini|squash|asparagus|bean|sprout|mushroom|shallot|scallion|ginger|avocado|cucumber|apple|orange|berry|fruit/.test(n)) return "produce"; return "pantry"; }
+
 async function saveDraft(){
   const d=state.draft;
   if(!d.name.trim()){ state.addStatus="Give it a name."; renderAdd(); return; }
@@ -971,7 +1044,7 @@ function splitWhole(){
     if(mode==="ing"){
       if(/^\d+[\.\)]\s/.test(s)&&s.length>60){ mode="step"; }             // "1. Preheat..." means steps began
       else if(!qty.test(s)&&(s.length>90||(/[.!]$/.test(s)&&s.split(" ").length>6))){ mode="step"; }   // prose sentence = a step
-      else { ing.push(s.replace(/^[•\-\*▢☐]\s*/,"")); continue; }
+      else { if(!JUNK_RE.test(s)&&/[a-z]/i.test(s)&&s.split(" ").length<=14) ing.push(s.replace(/^[•\-\*▢☐]\s*/,"")); continue; }
     }
     if(mode==="step"){ if(/^(step\s*\d+|\d+)[\.\):]?\s*$/i.test(s)) continue; steps.push(s.replace(/^(step\s*\d+[\.\):]?\s*|\d+[\.\)]\s*)/i,"")); }
   }
@@ -983,7 +1056,7 @@ function splitWhole(){
 
 async function importText(){
   const t=state.txt;
-  const lines=t.ingredients.split(/\n/).map(s=>s.trim()).filter(Boolean);
+  const lines=t.ingredients.split(/\n/).map(s=>s.trim()).filter(s=>s&&!JUNK_RE.test(s)&&/[a-z]/i.test(s));
   if(!t.title.trim()){ state.txtStatus="Give it a title."; renderAdd(); return; }
   if(!lines.length){ state.txtStatus="Add at least one ingredient line."; renderAdd(); return; }
   state.txtStatus="Working out nutrition…"; renderAdd();
