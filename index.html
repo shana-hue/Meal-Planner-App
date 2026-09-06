@@ -629,6 +629,7 @@ $main.addEventListener("click",e=>{
   else if(t.dataset.savefound){ startDraft(state.found.results[+t.dataset.savefound], t.dataset.kind); }
   else if(t.dataset.import){ importUrl(); }
   else if(t.dataset.parsetext){ importText(); }
+  else if(t.dataset.splittext){ splitWhole(); }
   else if(t.dataset.quick){ quickAdd(t.dataset.quick, t.dataset.q); }
   else if(t.dataset.savedraft){ saveDraft(); }
   else if(t.dataset.canceldraft){ state.draft=null; state.view=state.draftReturn||"add"; render(); }
@@ -850,8 +851,10 @@ function renderAdd(){
       <div class="status">${state.addStatus||""}</div>
       <p class="note">Works with most recipe sites. Food Network and NYT Cooking don't allow it — use the text option below for those.</p>
       <h3 style="margin-top:28px">Or paste the recipe as text</h3>
-      <p class="lede">From a cookbook, a paywalled site, or your own head. Spoonacular works out the nutrition from the ingredient lines.</p>
+      <p class="lede">From a cookbook, a paywalled site, or your own head. Paste the whole thing in the first box and click Split it up; check the three boxes it fills; then Work out nutrition.</p>
       <div class="form">
+        <label class="wide">Paste the whole recipe here<textarea id="txtWhole" placeholder="Title, then ingredients, then directions — however the page had it">${esc(state.txt.whole||"")}</textarea></label>
+        <div class="wide controls"><button data-splittext="1">Split it up</button><span class="src">Fills the boxes below. Fix anything it got wrong.</span></div>
         <label class="wide">Title<input id="txtTitle" value="${esc(state.txt.title)}" placeholder="Recipe name"></label>
         <label>Serves<input id="txtServings" type="number" min="1" value="${state.txt.servings}"></label>
         <label class="wide">Ingredients, one per line, with amounts<textarea id="txtIngredients" placeholder="One ingredient per line, with the amount">${esc(state.txt.ingredients)}</textarea></label>
@@ -893,7 +896,7 @@ function renderAdd(){
 }
 function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
 $main.addEventListener("input",e=>{
-  const map={txtTitle:"title",txtServings:"servings",txtIngredients:"ingredients",txtSteps:"steps"};
+  const map={txtWhole:"whole",txtTitle:"title",txtServings:"servings",txtIngredients:"ingredients",txtSteps:"steps"};
   if(map[e.target.id]){ state.txt[map[e.target.id]]=e.target.value; return; }
   const f=e.target.dataset.f; if(!f||!state.draft) return;
   const d=state.draft, v=e.target.value;
@@ -922,6 +925,39 @@ async function saveDraft(){
   if(!d.spoonId&&!d.sourceUrl&&!d.editId) state.txt={title:"",servings:4,ingredients:"",steps:""};
   state.draft=null; state.addStatus=`Saved "${d.name}".`;
   state.view=state.draftReturn==="chooser"?"chooser":state.draftReturn==="library"?"library":"add"; render(); window.scrollTo({top:0});
+}
+
+function splitWhole(){
+  const raw=(state.txt.whole||"").replace(/\r/g,"");
+  const lines=raw.split("\n").map(s=>s.trim()).filter(Boolean);
+  if(!lines.length){ state.txtStatus="Paste the recipe into the big box first."; renderAdd(); return; }
+  const isHead=(s,re)=>re.test(s.replace(/[:\-–—]+$/,"").trim())&&s.length<40;
+  const ingHead=/^(ingredients?|you will need|what you need|shopping list)$/i;
+  const stepHead=/^(directions?|instructions?|method|steps?|preparation|how to make it|to make)$/i;
+  const stopHead=/^((cook'?s'? |chef'?s'? |recipe )?notes?|tips?|nutrition( facts| information)?|equipment|storage|make ahead|serving suggestions?|variations?)$/i;
+  const qty=/^(\d+([\/.,]\d+)?|[½⅓¼⅔¾⅛]|a |an |one |two |three |four |half |pinch|dash|handful|salt|pepper|to taste)/i;
+  let title="", ing=[], steps=[], mode="pre", servings=null;
+  for(const s of lines){
+    const sv=s.match(/(?:serves|servings|yield|makes)\s*:?\s*(\d+)/i)||s.match(/^(\d+)\s+servings?/i); if(sv&&!servings) servings=+sv[1];
+    if(isHead(s,ingHead)){ mode="ing"; continue; }
+    if(isHead(s,stepHead)){ mode="step"; continue; }
+    if(isHead(s,stopHead)){ mode="done"; continue; }
+    if(mode==="done") continue;
+    if(mode==="pre"){
+      if(!title){ title=s; continue; }
+      if(qty.test(s)){ mode="ing"; } else continue;   // skip intro chatter until amounts start
+    }
+    if(mode==="ing"){
+      if(/^\d+[\.\)]\s/.test(s)&&s.length>60){ mode="step"; }             // "1. Preheat..." means steps began
+      else if(!qty.test(s)&&(s.length>90||(/[.!]$/.test(s)&&s.split(" ").length>6))){ mode="step"; }   // prose sentence = a step
+      else { ing.push(s.replace(/^[•\-\*▢☐]\s*/,"")); continue; }
+    }
+    if(mode==="step"){ if(/^(step\s*\d+|\d+)[\.\):]?\s*$/i.test(s)) continue; steps.push(s.replace(/^(step\s*\d+[\.\):]?\s*|\d+[\.\)]\s*)/i,"")); }
+  }
+  // strip a trailing "Ingredients" line style: quantities like "1 (15 oz) can" keep as is
+  state.txt.title=state.txt.title||title; state.txt.ingredients=ing.join("\n"); state.txt.steps=steps.join("\n"); if(servings) state.txt.servings=servings;
+  state.txtStatus=`Found ${ing.length} ingredients and ${steps.length} steps${servings?", serves "+servings:""}. Check the boxes, then Work out nutrition.`;
+  renderAdd(); const el=document.getElementById("txtTitle"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
 async function importText(){
