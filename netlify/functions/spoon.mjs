@@ -29,6 +29,18 @@ export default async (req) => {
   } else if (q.op === "info") {
     path = `/recipes/${encodeURIComponent(q.id)}/information`;
     params = { includeNutrition: "true" };
+  } else if (q.op === "parse") {
+    // Typed/pasted ingredient lines -> names, amounts, aisles and nutrition
+    let body; try { body = await req.json(); } catch { return reply(400, { error: "Bad request body" }); }
+    const lines = (body.ingredients || []).map(s => String(s).trim()).filter(Boolean);
+    if (!lines.length) return reply(400, { error: "No ingredient lines" });
+    const form = new URLSearchParams({ ingredientList: lines.join("\n"), servings: String(body.servings || 4), includeNutrition: "true" });
+    try {
+      const res = await fetch(`${BASE}/recipes/parseIngredients?apiKey=${key}`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+      const text = await res.text();
+      let out; try { out = JSON.parse(text); } catch { out = { error: text }; }
+      return reply(res.status, out);
+    } catch (e) { return reply(502, { error: "Could not reach Spoonacular: " + e.message }); }
   } else {
     return reply(400, { error: "Unknown op" });
   }
