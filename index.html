@@ -764,7 +764,7 @@ async function runSearch(kind, term){
   const p=new URLSearchParams({op:"search", query:term, include:kind==="onepan"?term.split(", ").join(","):"", number:String(SEARCH_COUNT)});
   if(kind==="starch"||kind==="veg") p.set("type","side dish");
   try{
-    const res=await fetch(SPOON+"?"+p); const j=await res.json();
+    const res=await fetch(SPOON+"?"+p); const j=await readJson(res);
     if(j.error||j.message) throw new Error(j.error||j.message);
     state.found.results=j.results||[];
     state.found.status=state.found.results.length?`${state.found.results.length} found · ${j.quotaLeft!=null?Math.round(j.quotaLeft)+" points left today":""}`:"Nothing found. Try a different chip or word.";
@@ -786,6 +786,11 @@ function fromSpoon(x){
   return {name:x.title||"Untitled", source:x.sourceName||hostOf(x.sourceUrl), sourceUrl:x.sourceUrl||"", spoonId:x.id||null, rating:0, reviews:x.aggregateLikes||0,
     servings:x.servings||4, why:"", perServing:{g, kcal:n("Calories"), p:n("Protein"), c:n("Carbohydrates"), f:n("Fat")},
     ingredients, steps, active, total, method, kind:"protein", tag:"", tags:[]};
+}
+async function readJson(res){
+  const text=await res.text();
+  try{ return JSON.parse(text); }
+  catch{ return {error:`The recipe service answered with status ${res.status} instead of data. It said: ${text.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,160)}`}; }
 }
 function round2(v){ return Math.round((+v||0)*100)/100; }
 function hostOf(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch{ return "Web"; } }
@@ -810,7 +815,7 @@ async function importUrl(){
   if(!url){ state.addStatus="Paste a recipe link first."; render(); return; }
   state.addStatus="Reading the recipe…"; render();
   try{
-    const res=await fetch(SPOON+"?"+new URLSearchParams({op:"extract", url})); const j=await res.json();
+    const res=await fetch(SPOON+"?"+new URLSearchParams({op:"extract", url})); const j=await readJson(res);
     if(j.error||j.message||!j.title) throw new Error(j.error||j.message||"Couldn't read a recipe from that page.");
     startDraft(j, null);
   }catch(e){ state.addStatus="Import failed: "+e.message; render(); }
