@@ -135,7 +135,9 @@
     <h1>Meal planner</h1>
     <p class="lede">Enter your email and you'll get a sign-in link.</p>
     <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
-    <button class="primary" id="send">Send me a link</button>
+    <input id="password" type="password" placeholder="Password (if you've set one)" autocomplete="current-password">
+    <button class="primary" id="pwlogin">Sign in with password</button>
+    <button class="quiet" id="send">Or email me a sign-in link</button>
     <div class="msg" id="loginMsg"></div>
   </div>
 </div>
@@ -156,6 +158,7 @@
       <button id="showLibrary">My library</button>
       <button id="clearWeek" class="quiet">Clear the week</button>
       <div class="saved" id="saved"></div>
+      <button id="setpw" class="quiet">Set a password</button>
       <button id="signout" class="quiet">Sign out</button>
     </div>
   </aside>
@@ -1181,7 +1184,21 @@ $("send").onclick=async()=>{
   const {error}=await db.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin}});
   $("loginMsg").textContent=error?"Couldn't send: "+error.message:"Check your email and click the link.";
 };
-$("email").addEventListener("keydown",e=>{ if(e.key==="Enter") $("send").click(); });
+$("pwlogin").onclick=async()=>{
+  const email=$("email").value.trim(), password=$("password").value;
+  if(!email||!password){ $("loginMsg").textContent=password?"Type your email.":"Type your password, or use the email link."; return; }
+  $("loginMsg").textContent="Signing in…";
+  const {error}=await db.auth.signInWithPassword({email,password});
+  if(error) $("loginMsg").textContent=/invalid/i.test(error.message)?"Wrong email or password. If you haven't set a password yet, use the email link on a computer, then Set a password in the sidebar.":"Couldn't sign in: "+error.message;
+};
+$("email").addEventListener("keydown",e=>{ if(e.key==="Enter") $("pwlogin").click(); });
+$("password").addEventListener("keydown",e=>{ if(e.key==="Enter") $("pwlogin").click(); });
+$("setpw").onclick=async()=>{
+  const pw=prompt("Choose a password for signing in on your phone (at least 8 characters):"); if(pw===null) return;
+  if(pw.length<8){ alert("Make it at least 8 characters."); return; }
+  const {error}=await db.auth.updateUser({password:pw});
+  alert(error?"Couldn't set it: "+error.message:"Password set. On your phone, open the app icon and sign in with your email and this password.");
+};
 $("signout").onclick=()=>db.auth.signOut();
 
 let booted=false;
