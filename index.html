@@ -626,6 +626,7 @@ $main.addEventListener("click",e=>{
   else if(t.dataset.libkind!==undefined){ state.libKind=t.dataset.libkind; renderLibrary(); }
   else if(t.dataset.savefound){ startDraft(state.found.results[+t.dataset.savefound], t.dataset.kind); }
   else if(t.dataset.import){ importUrl(); }
+  else if(t.dataset.parsetext){ importText(); }
   else if(t.dataset.savedraft){ saveDraft(); }
   else if(t.dataset.canceldraft){ state.draft=null; state.view=state.draftReturn||"add"; render(); }
   else if(t.dataset.go){ state.step=t.dataset.go; render(); window.scrollTo({top:0}); }
@@ -739,6 +740,7 @@ const SPOON = "/.netlify/functions/spoon";
 state.found = null;   // {key, results:[...raw spoonacular recipes], status}
 state.draft = null;   // recipe being confirmed before saving
 state.addStatus = "";
+state.txt={title:"",servings:4,ingredients:"",steps:""}; state.txtStatus="";
 const kindTags = {protein:()=>Object.values(PROTEIN_TREE).flat(), starch:()=>[...STARCHES,...state.custom.starchType], veg:()=>[...VEGGIES,...state.custom.vegType]};
 const METHODS = ["Oven","Stovetop","Broiler","Grill","Air fryer","Dutch oven","Sheet pan","Slow cooker","Skillet","Pot roast","Grill or broiler"];
 const STYLES = ["Sheet pan","Dutch oven","Air fryer","Skillet","Pot roast","Slow cooker","One pot"];
@@ -824,10 +826,15 @@ function startDraft(x, kind){
 async function importUrl(){
   const url=(document.getElementById("recipeUrl")||{}).value?.trim();
   if(!url){ state.addStatus="Paste a recipe link first."; render(); return; }
+  let u; try{ u=new URL(url); }catch{ state.addStatus="That doesn't look like a web address. It should start with https://"; render(); return; }
+  if(u.pathname.replace(/\/+$/,"").length<2){ state.addStatus="That's a site's front page, not a recipe. Open the recipe you want and copy the address of that page."; render(); return; }
+  if(/foodnetwork\.com/.test(u.hostname)){ state.addStatus="Food Network blocks the recipe reader (it redirects to their UK homepage). Use the paste-as-text option for those, or a link from another site."; render(); return; }
   state.addStatus="Reading the recipe…"; render();
   try{
     const res=await fetch(SPOON+"?"+new URLSearchParams({op:"extract", url})); const j=await readJson(res);
     if(j.error||j.message||!j.title) throw new Error(j.error||j.message||"Couldn't read a recipe from that page.");
+    const ing=(j.extendedIngredients||[]).length, st=(j.analyzedInstructions&&j.analyzedInstructions[0]&&j.analyzedInstructions[0].steps||[]).length;
+    if(ing>40||ing===0||st===0||/\|/.test(j.title)) throw new Error(`That page didn't read as a single recipe (${ing} ingredients, ${st} steps). Check it's the recipe's own page, not a listing.`);
     startDraft(j, null);
   }catch(e){ state.addStatus="Import failed: "+e.message; render(); }
 }
@@ -838,8 +845,17 @@ function renderAdd(){
     html+=`<p class="lede">Paste a link to a recipe page. Spoonacular reads the ingredients, steps and nutrition; you confirm the details, then it's in your library.</p>
       <div class="urlrow"><input id="recipeUrl" type="url" placeholder="https://www.seriouseats.com/…" value="${state.pendingUrl||""}"><button class="primary" data-import="1">Import</button></div>
       <div class="status">${state.addStatus||""}</div>
-      <p class="note">Works with most recipe sites (NYT Cooking is the usual exception because it's behind a paywall). The library now has ${RECIPES.length} recipes.</p>
-      <div class="nav"><button data-back="1">Back to planning</button></div>`;
+      <p class="note">Works with most recipe sites. Food Network and NYT Cooking don't allow it — use the text option below for those.</p>
+      <h3 style="margin-top:28px">Or paste the recipe as text</h3>
+      <p class="lede">From a cookbook, a paywalled site, or your own head. Spoonacular works out the nutrition from the ingredient lines.</p>
+      <div class="form">
+        <label class="wide">Title<input id="txtTitle" value="${esc(state.txt.title)}" placeholder="Air fryer zucchini"></label>
+        <label>Serves<input id="txtServings" type="number" min="1" value="${state.txt.servings}"></label>
+        <label class="wide">Ingredients, one per line, with amounts<textarea id="txtIngredients" placeholder="2 medium zucchini&#10;1 tbsp olive oil&#10;1/4 cup grated parmesan&#10;1/2 tsp salt">${esc(state.txt.ingredients)}</textarea></label>
+        <label class="wide">Steps, one per line<textarea id="txtSteps" placeholder="Cut the zucchini into spears.&#10;Toss with oil, salt and parmesan.&#10;Air fry at 400°F for 10 minutes.">${esc(state.txt.steps)}</textarea></label>
+      </div>
+      <div class="status">${state.txtStatus||""}</div>
+      <div class="nav"><button data-back="1">Back to planning</button><button class="primary" data-parsetext="1">Work out nutrition</button></div>`;
     $main.innerHTML=html; return;
   }
   const opt=(list,cur)=>list.map(o=>`<option ${o===cur?"selected":""}>${o}</option>`).join("");
@@ -874,6 +890,8 @@ function renderAdd(){
 }
 function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
 $main.addEventListener("input",e=>{
+  const map={txtTitle:"title",txtServings:"servings",txtIngredients:"ingredients",txtSteps:"steps"};
+  if(map[e.target.id]){ state.txt[map[e.target.id]]=e.target.value; return; }
   const f=e.target.dataset.f; if(!f||!state.draft) return;
   const d=state.draft, v=e.target.value;
   if(f.startsWith("ps.")) d.perServing[f.slice(3)]=+v||0;
@@ -898,8 +916,40 @@ async function saveDraft(){
   if(d.editId) RECIPES[RECIPES.findIndex(x=>x.id===d.editId)]=fromRow(data); else RECIPES.push(fromRow(data));
   const key={protein:"proteinType",starch:"starchType",veg:"vegType"}[d.kind];
   if(key){ const known=kindTags[d.kind](); if(!known.includes(d.tag)&&!state.custom[key].includes(d.tag)) state.custom[key].push(d.tag); }
+  if(!d.spoonId&&!d.sourceUrl&&!d.editId) state.txt={title:"",servings:4,ingredients:"",steps:""};
   state.draft=null; state.addStatus=`Saved "${d.name}".`;
   state.view=state.draftReturn==="chooser"?"chooser":state.draftReturn==="library"?"library":"add"; render(); window.scrollTo({top:0});
+}
+
+async function importText(){
+  const t=state.txt;
+  const lines=t.ingredients.split(/\n/).map(s=>s.trim()).filter(Boolean);
+  if(!t.title.trim()){ state.txtStatus="Give it a title."; renderAdd(); return; }
+  if(!lines.length){ state.txtStatus="Add at least one ingredient line."; renderAdd(); return; }
+  state.txtStatus="Working out nutrition…"; renderAdd();
+  try{
+    const res=await fetch(SPOON+"?op=parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ingredients:lines,servings:+t.servings||4})});
+    const j=await readJson(res);
+    if(!Array.isArray(j)) throw new Error(j.error||j.message||"Unexpected answer from the recipe service.");
+    const servings=+t.servings||4;
+    const tot={g:0,kcal:0,p:0,c:0,f:0};
+    const ingredients=j.map((i,k)=>{
+      const nut=(i.nutrition&&i.nutrition.nutrients)||[];
+      const n=name=>{const f=nut.find(v=>v.name===name); return f?f.amount:0;};
+      tot.kcal+=n("Calories"); tot.p+=n("Protein"); tot.c+=n("Carbohydrates"); tot.f+=n("Fat");
+      tot.g+=(i.nutrition&&i.nutrition.weightPerServing&&i.nutrition.weightPerServing.unit==="g")?i.nutrition.weightPerServing.amount:0;
+      return [(i.nameClean||i.name||lines[k]).toLowerCase(), round2(i.amount), i.unitShort||i.unit||"", sectionOf(i.aisle)];
+    });
+    const steps=t.steps.split(/\n/).map(s=>s.replace(/^\s*\d+[\.\)]\s*/,"").trim()).filter(Boolean);
+    const r={name:t.title.trim(), source:"My recipe", sourceUrl:"", spoonId:null, rating:0, reviews:0, servings, why:"",
+      perServing:{g:Math.round(tot.g/servings), kcal:Math.round(tot.kcal/servings), p:Math.round(tot.p/servings), c:Math.round(tot.c/servings), f:Math.round(tot.f/servings)},
+      ingredients, steps, active:15, total:30, method:guessMethod(t.title+" "+steps.join(" ")), kind:"protein", tag:"", tags:[]};
+    const g=guessTags(r);
+    const n=[g.prot,g.st,g.vg].filter(Boolean).length;
+    if(g.prot&&n>=2){r.kind="onepan";r.tags=[g.prot,g.st,g.vg].filter(Boolean);r.style=STYLES.find(s=>s===r.method)||"One pot";} else if(g.prot){r.kind="protein";r.tag=g.prot;} else if(g.st){r.kind="starch";r.tag=g.st;} else if(g.vg){r.kind="veg";r.tag=g.vg;}
+    state.draftReturn="add"; state.draft=r; state.addStatus="Nutrition is an estimate from the ingredient lines — adjust anything that looks off, and set the hands-on minutes."; state.txtStatus="";
+    render(); window.scrollTo({top:0});
+  }catch(e){ state.txtStatus="Couldn't work it out: "+e.message; renderAdd(); }
 }
 
 /* ---------- My library ---------- */
