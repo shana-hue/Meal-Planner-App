@@ -444,7 +444,7 @@ function recipeCard(r,chosenId,kind){
   const chosen=r.id===chosenId;
   return `<div class="card ${r.kind}${chosen?" chosen":""}${r.active>state.activeLimit?" slow":""}">
     <h3>${r.name}</h3>
-    <div class="src">${r.source} · ${r.rating}★ from ${r.reviews.toLocaleString()} reviews${r.style?" · "+r.style:r.method?" · "+r.method:""}</div>
+    <div class="src">${r.plain?"No recipe — just the ingredient":`${r.source} · ${r.rating}★ from ${r.reviews.toLocaleString()} reviews${r.style?" · "+r.style:r.method?" · "+r.method:""}`}</div>
     <div class="src time${r.active>state.activeLimit?" over":""}">${r.active} min active · ${r.total} min total</div>
     <div class="why">${r.why}</div>
     ${swapsFor(r).length?`<div class="src">Swap: ${swapsFor(r).join("; ")}</div>`:""}
@@ -481,6 +481,7 @@ function renderChooser(){
       html+= shown.length
         ? `<div class="recipes">${shown.map(r=>recipeCard(r,d.protein,"protein")).join("")}</div>`
         : `<div class="empty">Nothing saved for ${term.toLowerCase()} yet.</div>`;
+      if(cutSel) html+=quickButton("protein", cutSel);
       html+=discoveryBlock("protein", term, shown.length);
       if(blocked.length) html+=`<p class="note">${blocked.length} recipe${blocked.length>1?"s":""} hidden (no gluten-free substitute): ${blocked.map(r=>`${r.name} (${glutenHits(r).join(", ")})`).join("; ")}.</p>`;
     }
@@ -498,6 +499,7 @@ function renderChooser(){
       html+= list.length
         ? `<div class="recipes">${list.map(r=>recipeCard(r,d[state.step],state.step)).join("")}</div>`
         : `<div class="empty">Nothing saved for ${sel.toLowerCase()} yet.</div>`;
+      html+=quickButton(state.step, sel);
       html+=discoveryBlock(state.step, sel, list.length);
     }
     const prev={starch:"protein",veg:"starch"}[state.step];
@@ -627,6 +629,7 @@ $main.addEventListener("click",e=>{
   else if(t.dataset.savefound){ startDraft(state.found.results[+t.dataset.savefound], t.dataset.kind); }
   else if(t.dataset.import){ importUrl(); }
   else if(t.dataset.parsetext){ importText(); }
+  else if(t.dataset.quick){ quickAdd(t.dataset.quick, t.dataset.q); }
   else if(t.dataset.savedraft){ saveDraft(); }
   else if(t.dataset.canceldraft){ state.draft=null; state.view=state.draftReturn||"add"; render(); }
   else if(t.dataset.go){ state.step=t.dataset.go; render(); window.scrollTo({top:0}); }
@@ -682,7 +685,7 @@ function fromRow(x){
   return {id:x.id, kind:x.kind, active:x.active_min||0, total:x.total_min||0, method:x.method||undefined, style:x.style||undefined,
     tag, tags:x.tags||[], bone:x.bone||undefined, name:x.name, source:x.source_name||"", rating:+x.rating||0, reviews:x.reviews||0,
     servings:x.servings||4, why:x.why||"", perServing:x.per_serving||{g:0,kcal:0,p:0,c:0,f:0},
-    ingredients:(x.ingredients||[]).map(i=>[i.name,i.qty,i.unit,i.section]), steps:x.steps&&x.steps.length?x.steps:undefined, meat:x.meat||undefined, spoonId:x.spoonacular_id||null, animal:x.animal||undefined, sourceUrl:x.source_url||""};
+    ingredients:(x.ingredients||[]).map(i=>[i.name,i.qty,i.unit,i.section]), steps:x.steps&&x.steps.length?x.steps:undefined, meat:x.meat||undefined, spoonId:x.spoonacular_id||null, animal:x.animal||undefined, sourceUrl:x.source_url||"", plain:x.style==="plain"};
 }
 function mondayOf(d){ const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
 function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -849,10 +852,10 @@ function renderAdd(){
       <h3 style="margin-top:28px">Or paste the recipe as text</h3>
       <p class="lede">From a cookbook, a paywalled site, or your own head. Spoonacular works out the nutrition from the ingredient lines.</p>
       <div class="form">
-        <label class="wide">Title<input id="txtTitle" value="${esc(state.txt.title)}" placeholder="Air fryer zucchini"></label>
+        <label class="wide">Title<input id="txtTitle" value="${esc(state.txt.title)}" placeholder="Recipe name"></label>
         <label>Serves<input id="txtServings" type="number" min="1" value="${state.txt.servings}"></label>
-        <label class="wide">Ingredients, one per line, with amounts<textarea id="txtIngredients" placeholder="2 medium zucchini&#10;1 tbsp olive oil&#10;1/4 cup grated parmesan&#10;1/2 tsp salt">${esc(state.txt.ingredients)}</textarea></label>
-        <label class="wide">Steps, one per line<textarea id="txtSteps" placeholder="Cut the zucchini into spears.&#10;Toss with oil, salt and parmesan.&#10;Air fry at 400°F for 10 minutes.">${esc(state.txt.steps)}</textarea></label>
+        <label class="wide">Ingredients, one per line, with amounts<textarea id="txtIngredients" placeholder="One ingredient per line, with the amount">${esc(state.txt.ingredients)}</textarea></label>
+        <label class="wide">Steps, one per line<textarea id="txtSteps" placeholder="One step per line">${esc(state.txt.steps)}</textarea></label>
       </div>
       <div class="status">${state.txtStatus||""}</div>
       <div class="nav"><button data-back="1">Back to planning</button><button class="primary" data-parsetext="1">Work out nutrition</button></div>`;
@@ -952,6 +955,39 @@ async function importText(){
   }catch(e){ state.txtStatus="Couldn't work it out: "+e.message; renderAdd(); }
 }
 
+/* ---------- "Just pasta": a bare item with no recipe ---------- */
+function plainName(chip){ return "Plain "+chip.toLowerCase(); }
+function quickButton(kind, chip){
+  const existing=RECIPES.find(r=>r.kind===kind&&r.tag===chip&&r.plain);
+  if(existing) return "";   // it's already a card in the list above
+  return `<div class="controls" style="margin-top:10px"><button data-quick="${kind}" data-q="${chip}">Just ${chip.toLowerCase()}, no recipe</button><span class="src">Adds a plain item so the day and the grocery list know about it.</span>${state.quickStatus?`<span>${state.quickStatus}</span>`:""}</div>`;
+}
+async function quickAdd(kind, chip){
+  const d=state.week[state.activeDay];
+  const existing=RECIPES.find(r=>r.kind===kind&&r.tag===chip&&r.plain);
+  if(existing){ d[kind]=existing.id; d.onepan=null; render(); return; }
+  state.quickStatus="Adding…"; render();
+  let per={g:0,kcal:0,p:0,c:0,f:0}, ing=[[chip.toLowerCase(),1,"serving",kind==="protein"?"meat":kind==="veg"?"produce":"pantry"]];
+  try{
+    const res=await fetch(SPOON+"?op=parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ingredients:["1 serving "+chip.toLowerCase()],servings:1})});
+    const j=await readJson(res);
+    if(Array.isArray(j)&&j[0]){
+      const i=j[0], nut=(i.nutrition&&i.nutrition.nutrients)||[]; const n=name=>{const f=nut.find(v=>v.name===name); return f?Math.round(f.amount):0;};
+      per={g:(i.nutrition&&i.nutrition.weightPerServing&&i.nutrition.weightPerServing.unit==="g")?Math.round(i.nutrition.weightPerServing.amount):0, kcal:n("Calories"), p:n("Protein"), c:n("Carbohydrates"), f:n("Fat")};
+      ing=[[(i.nameClean||i.name||chip).toLowerCase(), round2(i.amount)||1, i.unitShort||i.unit||"serving", sectionOf(i.aisle)||ing[0][3]]];
+    }
+  }catch(e){ /* nutrition unknown; still add the item */ }
+  const r={name:plainName(chip), source:"No recipe", sourceUrl:"", spoonId:null, rating:0, reviews:0, servings:1, why:"Cook it however you like.",
+    perServing:per, ingredients:ing, steps:["Cook the "+chip.toLowerCase()+" however you like."], active:5, total:15,
+    method:kind==="protein"?"Grill or broiler":"Stovetop", kind, tag:chip, tags:[], plain:true};
+  const row=toRow(r); row.style="plain";
+  const {data,error}=await db.from("recipes").insert(row).select("*").single();
+  state.quickStatus="";
+  if(error){ alert("Couldn't add: "+error.message); render(); return; }
+  const saved=fromRow(data); RECIPES.push(saved);
+  d[kind]=saved.id; d.onepan=null; render();
+}
+
 /* ---------- My library ---------- */
 state.libKind=""; state.libQuery="";
 const KIND_LABEL={protein:"Protein",starch:"Starch",veg:"Vegetable",onepan:"One-pan"};
@@ -983,7 +1019,7 @@ function libraryCard(r){
   return `<div class="card ${r.kind}${r.active>state.activeLimit?" slow":""}" data-edit="${r.id}" style="cursor:pointer">
     <h3>${r.name}</h3>
     <div class="src">${KIND_LABEL[r.kind]} · ${where}${r.bone?" · "+r.bone:""} · <u>Edit</u></div>
-    <div class="src">${r.source||""}${r.style?" · "+r.style:r.method?" · "+r.method:""}</div>
+    <div class="src">${r.source||""}${r.plain?"":r.style?" · "+r.style:r.method?" · "+r.method:""}</div>
     <div class="src time${r.active>state.activeLimit?" over":""}">${r.active} min active · ${r.total} min total</div>
     ${r.why?`<div class="why">${r.why}</div>`:""}
     ${hits.length?`<div class="src" style="color:var(--protein)">Hidden from planning: contains ${hits.join(", ")}</div>`:swapsFor(r).length?`<div class="src">Swap: ${swapsFor(r).join("; ")}</div>`:""}
